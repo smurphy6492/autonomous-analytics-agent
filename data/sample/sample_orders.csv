@@ -1,0 +1,11 @@
+order_id,order_date,revenue,category,customer_state
+1,2023-01-01,100.00,electronics,CA
+2,2023-01-02,200.00,clothing,NY
+3,2023-01-03,150.00,electronics,TX
+4,2023-01-15,300.00,furniture,CA
+5,2023-02-01,80.00,clothing,FL
+6,2023-02-10,450.00,electronics,NY
+7,2023-02-20,120.00,furniture,CA
+8,2023-03-05,250.00,clothing,TX
+9,2023-03-12,175.00,electronics,FL
+10,2023-03-25,320.00,furniture,NY

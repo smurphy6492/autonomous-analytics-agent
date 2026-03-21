@@ -1,0 +1,28 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+venv/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+*.egg-info/
+.coverage
+
+# Data files (download separately)
+data/raw/
+
+# Generated reports
+output/
+!output/.gitkeep
+
+# Dev cache
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
