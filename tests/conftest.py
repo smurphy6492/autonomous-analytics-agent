@@ -4,6 +4,10 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from dotenv import load_dotenv
+
+# Load .env so ANTHROPIC_API_KEY is available for integration tests.
+load_dotenv()
 
 
 @pytest.fixture

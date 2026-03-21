@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ report_title }}</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        /* ------------------------------------------------------------------ */
+        /* Reset & base                                                         */
+        /* ------------------------------------------------------------------ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html { font-size: 16px; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                         "Helvetica Neue", Arial, sans-serif;
+            background: #f8f9fa;
+            color: #212529;
+            line-height: 1.6;
+        }
+
+        a { color: #0066cc; }
+
+        /* ------------------------------------------------------------------ */
+        /* Layout                                                               */
+        /* ------------------------------------------------------------------ */
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Header                                                               */
+        /* ------------------------------------------------------------------ */
+        header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%);
+            color: #fff;
+            padding: 2.5rem 0 2rem;
+        }
+
+        header .container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        header h1 {
+            font-size: 1.9rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        header .subtitle {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.6);
+        }
+
+        header .question-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: rgba(255,255,255,0.5);
+            margin-top: 1rem;
+        }
+
+        header .question-text {
+            font-size: 1.05rem;
+            color: rgba(255,255,255,0.9);
+            font-style: italic;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Main content                                                         */
+        /* ------------------------------------------------------------------ */
+        main {
+            padding: 2rem 0 3rem;
+        }
+
+        section {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+            padding: 1.75rem 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        section h2 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #0f3460;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 0.6rem;
+            margin-bottom: 1.25rem;
+        }
+
+        section h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #343a40;
+            margin: 1.5rem 0 0.75rem;
+        }
+
+        section h3:first-child {
+            margin-top: 0;
+        }
+
+        p { margin-bottom: 0.75rem; }
+
+        /* ------------------------------------------------------------------ */
+        /* Key metrics                                                          */
+        /* ------------------------------------------------------------------ */
+        .key-metrics {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-top: 1.25rem;
+        }
+
+        .metric-card {
+            flex: 1 1 160px;
+            background: #f1f3f5;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            text-align: center;
+            border-top: 3px solid #0f3460;
+        }
+
+        .metric-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #0f3460;
+            line-height: 1.2;
+        }
+
+        .metric-label {
+            font-size: 0.78rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 0.25rem;
+        }
+
+        .metric-context {
+            font-size: 0.8rem;
+            color: #495057;
+            margin-top: 0.4rem;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Charts                                                               */
+        /* ------------------------------------------------------------------ */
+        .chart-container {
+            margin-bottom: 2rem;
+        }
+
+        .chart-container:last-child {
+            margin-bottom: 0;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Data tables                                                          */
+        /* ------------------------------------------------------------------ */
+        .table-container {
+            overflow-x: auto;
+            margin-bottom: 1.5rem;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        .data-table th {
+            background: #0f3460;
+            color: #fff;
+            padding: 0.6rem 0.85rem;
+            text-align: left;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .data-table td {
+            padding: 0.5rem 0.85rem;
+            border-bottom: 1px solid #dee2e6;
+            white-space: nowrap;
+        }
+
+        .data-table tbody tr:nth-child(even) { background: #f8f9fa; }
+        .data-table tbody tr:hover { background: #e9f0fb; }
+
+        /* ------------------------------------------------------------------ */
+        /* Methodology / collapsible                                           */
+        /* ------------------------------------------------------------------ */
+        details {
+            margin-top: 1rem;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        summary {
+            padding: 0.75rem 1rem;
+            background: #f8f9fa;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.9rem;
+            color: #343a40;
+            list-style: none;
+        }
+
+        summary::after {
+            content: " ▶";
+            float: right;
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+
+        details[open] summary::after { content: " ▼"; }
+
+        .query-block {
+            padding: 1rem;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .query-block p {
+            font-weight: 500;
+            margin-bottom: 0.4rem;
+            color: #343a40;
+        }
+
+        pre {
+            background: #1e1e2e;
+            color: #cdd6f4;
+            border-radius: 6px;
+            padding: 1rem;
+            overflow-x: auto;
+            font-size: 0.82rem;
+            line-height: 1.5;
+        }
+
+        code { font-family: "Fira Code", "Cascadia Code", Consolas, monospace; }
+
+        /* ------------------------------------------------------------------ */
+        /* Errors                                                               */
+        /* ------------------------------------------------------------------ */
+        .error-banner {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1.25rem;
+            font-size: 0.875rem;
+        }
+
+        .error-banner strong { color: #856404; }
+
+        /* ------------------------------------------------------------------ */
+        /* Footer                                                               */
+        /* ------------------------------------------------------------------ */
+        footer {
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.8rem;
+            padding: 1.5rem 0 2rem;
+        }
+
+        footer p { margin-bottom: 0.2rem; }
+
+        /* ------------------------------------------------------------------ */
+        /* Print                                                                */
+        /* ------------------------------------------------------------------ */
+        @media print {
+            body { background: #fff; }
+            section { box-shadow: none; border: 1px solid #dee2e6; }
+            details { display: block; }
+            summary::after { display: none; }
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Responsive                                                           */
+        /* ------------------------------------------------------------------ */
+        @media (max-width: 640px) {
+            header h1 { font-size: 1.4rem; }
+            section { padding: 1.25rem 1rem; }
+            .metric-card { flex: 1 1 130px; }
+            .metric-value { font-size: 1.3rem; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="container">
+        <h1>{{ report_title }}</h1>
+        <p class="subtitle">Generated on {{ generated_at }}</p>
+        <p class="question-label">Business Question</p>
+        <p class="question-text">{{ business_question }}</p>
+    </div>
+</header>
+
+<main>
+    <div class="container">
+
+        {% if errors %}
+        <section>
+            <div class="error-banner">
+                <strong>Pipeline warnings:</strong>
+                <ul style="margin-top:0.4rem;margin-left:1.2rem;">
+                    {% for err in errors %}
+                    <li>{{ err }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Executive Summary -->
+        <section id="executive-summary">
+            <h2>Executive Summary</h2>
+            <p>{{ executive_summary }}</p>
+
+            {% if key_metrics %}
+            <div class="key-metrics">
+                {% for metric in key_metrics %}
+                <div class="metric-card">
+                    <div class="metric-value">{{ metric.value }}</div>
+                    <div class="metric-label">{{ metric.label }}</div>
+                    {% if metric.context %}
+                    <div class="metric-context">{{ metric.context }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- Analysis: Charts + Data Tables -->
+        {% if charts or data_tables %}
+        <section id="analysis">
+            <h2>Analysis</h2>
+
+            {% for chart in charts %}
+            <div class="chart-container">
+                <h3>{{ chart.title }}</h3>
+                {{ chart.html | safe }}
+            </div>
+            {% endfor %}
+
+            {% for table in data_tables %}
+            <div class="table-container">
+                <h3>{{ table.title }}</h3>
+                {{ table.html | safe }}
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        <!-- Methodology -->
+        <section id="methodology">
+            <h2>Methodology</h2>
+            {% if data_sources %}
+            <p><strong>Data Sources:</strong> {{ data_sources | join(", ") }}</p>
+            {% endif %}
+            <p><strong>Analysis Approach:</strong> {{ analysis_approach }}</p>
+
+            {% if queries %}
+            <details>
+                <summary>SQL Queries Used</summary>
+                {% for query in queries %}
+                <div class="query-block">
+                    <p>{{ query.purpose }}</p>
+                    <pre><code>{{ query.sql }}</code></pre>
+                </div>
+                {% endfor %}
+            </details>
+            {% endif %}
+        </section>
+
+    </div>
+</main>
+
+<footer>
+    <p>Generated by <strong>Autonomous Analytics Agent</strong></p>
+    <p>Pipeline execution time: {{ execution_time }}</p>
+</footer>
+
+</body>
+</html>

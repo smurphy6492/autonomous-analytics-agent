@@ -1140,6 +1140,8 @@ Prepare 2-3 canned demos with different datasets/questions:
 
 4. **Dataset download:** Should the project auto-download the Olist dataset, or require manual download? (Recommend: Manual download, document clearly)
 
+5. **Clarifying questions:** Should the Orchestrator include a pre-flight evaluation step before query planning that asks the user for clarification when: (a) the question is ambiguous with multiple valid interpretations, (b) the question requires data not present in the profile, or (c) data quality issues would make the answer unreliable? Currently the pipeline treats `business_question` as a fixed input and never pauses. Adding this would require changes to the Orchestrator prompt (Call 1), the pipeline runner to handle a clarification loop, and the CLI to accept user input mid-run. (Recommend: Yes — this is a high-signal portfolio capability that demonstrates the agent knows what it doesn't know. Implement as an optional `--interactive` flag so non-interactive runs still work for demos.)
+
 ---
 
 ## Success Criteria
