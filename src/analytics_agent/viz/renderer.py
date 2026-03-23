@@ -214,8 +214,7 @@ def _render_heatmap(
     y_vals = sorted({str(row[y_col]) for row in data})
     z: list[list[float | None]] = []
     lookup: dict[tuple[str, str], float | None] = {
-        (str(row[x_col]), str(row[y_col])): float(row[value_col])
-        for row in data
+        (str(row[x_col]), str(row[y_col])): float(row[value_col]) for row in data
     }
     for y in y_vals:
         z.append([lookup.get((x, y)) for x in x_vals])

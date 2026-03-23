@@ -1,6 +1,6 @@
 """Report models — output of the Orchestrator synthesis call and report builder."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -91,7 +91,7 @@ class AnalysisReport(BaseModel):
 
     title: str
     business_question: str
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     executive_summary: str
     key_metrics: list[KeyMetric]
     rendered_charts: list[RenderedChart]

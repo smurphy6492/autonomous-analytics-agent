@@ -15,7 +15,7 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "claude-sonnet-4-6"
-_DEFAULT_MAX_TOKENS = 4096
+_DEFAULT_MAX_TOKENS = 16384
 _RETRY_BASE_DELAY = 1.0  # seconds; doubled on each attempt
 
 T = TypeVar("T", bound=BaseModel)

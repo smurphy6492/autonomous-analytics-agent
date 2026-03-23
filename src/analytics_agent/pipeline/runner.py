@@ -87,6 +87,11 @@ class PipelineRunner:
             raise ValueError("data_paths must not be empty.")
 
         resolved = [Path(p) for p in data_paths]
+        missing = [p for p in resolved if not p.exists()]
+        if missing:
+            raise ValueError(
+                f"Data file(s) not found: {', '.join(str(p) for p in missing)}"
+            )
         table_names = [p.stem for p in resolved]
 
         if output_path is None:
