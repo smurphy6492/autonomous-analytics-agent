@@ -42,6 +42,10 @@ class ChartSpec(BaseModel):
     y_label: str | None = None
     show_legend: bool = True
     height: int = Field(default=400, ge=100, le=2000)
+    max_rows: int | None = None  # truncate data to top-N rows before rendering
+
+    # Bar chart options
+    bar_norm: str | None = None  # "percent" for 100% stacked bars, None for default
 
     # Formatting
     x_format: str | None = None  # e.g. "%Y-%m-%d" for dates

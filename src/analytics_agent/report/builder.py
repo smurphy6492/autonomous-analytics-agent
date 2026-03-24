@@ -145,10 +145,16 @@ def _rows_to_html(rows: list[dict], spec: DataTableSpec) -> str:  # type: ignore
     # Filter to only columns that actually exist in the data.
     columns = [c for c in columns if c in rows[0]]
 
-    header = "".join(f"<th>{_escape(c)}</th>" for c in columns)
+    # Pre-scan columns to decide per-column decimal precision.
+    col_decimals = _choose_column_decimals(rows, columns)
+
+    header = "".join(f"<th>{_format_header(c)}</th>" for c in columns)
     body_rows: list[str] = []
     for row in rows:
-        cells = "".join(f"<td>{_escape(str(row.get(c, '')))}</td>" for c in columns)
+        cells = "".join(
+            f"<td>{_escape(_format_cell(row.get(c, ''), c, col_decimals.get(c)))}</td>"
+            for c in columns
+        )
         body_rows.append(f"<tr>{cells}</tr>")
 
     return (
@@ -157,6 +163,101 @@ def _rows_to_html(rows: list[dict], spec: DataTableSpec) -> str:  # type: ignore
         f"<tbody>{''.join(body_rows)}</tbody>"
         "</table>"
     )
+
+
+# Column-name patterns used to infer formatting.
+_DOLLAR_KEYWORDS = ("revenue", "price", "cost", "sales", "spend", "payment", "value", "clv", "ltv")
+_PERCENT_KEYWORDS = ("pct", "percent", "share", "rate", "ratio")
+_COUNT_KEYWORDS = ("count", "orders", "items", "quantity", "num_", "total_orders", "total_items")
+
+
+def _format_header(col: str) -> str:
+    """Turn a snake_case column name into a readable table header."""
+    return col.replace("_", " ").title()
+
+
+def _choose_column_decimals(
+    rows: list[dict],  # type: ignore[type-arg]
+    columns: list[str],
+) -> dict[str, int]:
+    """Decide how many decimals each numeric column needs.
+
+    If rounding a column to 0 decimals would make all values identical but
+    rounding to 1 decimal preserves differences, use 1 decimal.  This prevents
+    columns like ``avg_orders_per_customer`` (1.03, 1.05, 1.02) from all
+    displaying as ``1``.
+    """
+    result: dict[str, int] = {}
+    for col in columns:
+        values = [
+            row[col] for row in rows
+            if col in row
+            and isinstance(row[col], (int, float))
+            and not isinstance(row[col], bool)
+        ]
+        if len(values) < 2:
+            continue
+
+        rounded_0 = {round(v, 0) for v in values}
+        rounded_1 = {round(v, 1) for v in values}
+
+        # If rounding to 0 decimals collapses to a single value but 1 decimal
+        # preserves at least some variation, bump to 1 decimal.
+        if len(rounded_0) == 1 and len(rounded_1) > 1:
+            result[col] = 1
+
+    return result
+
+
+def _format_cell(value: object, column: str, min_decimals: int | None = None) -> str:
+    """Format a cell value based on its column name and type.
+
+    Args:
+        value: The cell value.
+        column: Column name (used to infer dollar/percent/count formatting).
+        min_decimals: Minimum decimal places from column-level analysis.
+            When set, overrides the default 0-decimal rounding for dollar and
+            count columns if the column needs more precision.
+
+    Rules:
+    - Dollar columns (revenue, price, cost, ...): ``$1,234,567``
+    - Percent columns (pct, share, rate, ...): ``14.3%``
+    - Count/integer columns (orders, items, ...): ``1,234``
+    - Other large numbers (≥ 1000): ``1,234.56``
+    - Everything else: ``str(value)``
+    """
+    if value is None or value == "":
+        return ""
+
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return str(value)
+
+    col_lower = column.lower()
+    decimals = min_decimals or 0
+
+    # Dollar amounts.
+    if any(kw in col_lower for kw in _DOLLAR_KEYWORDS):
+        return f"${value:,.{decimals}f}"
+
+    # Percentages — one decimal minimum.
+    if any(kw in col_lower for kw in _PERCENT_KEYWORDS):
+        return f"{value:.{max(decimals, 1)}f}%"
+
+    # Integer counts.
+    if any(kw in col_lower for kw in _COUNT_KEYWORDS) or (
+        isinstance(value, int) and abs(value) >= 1000
+    ):
+        return f"{value:,.{decimals}f}"
+
+    # Any other large float — with commas.
+    if isinstance(value, float) and abs(value) >= 1000:
+        return f"{value:,.{max(decimals, 2)}f}"
+
+    # Small float — use column-level precision if available.
+    if isinstance(value, float) and decimals > 0:
+        return f"{value:,.{decimals}f}"
+
+    return str(value)
 
 
 def _escape(text: str) -> str:
