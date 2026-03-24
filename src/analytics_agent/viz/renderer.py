@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import logging
+import re
+import struct
 from typing import Any
 
 import plotly.express as px  # type: ignore[import-untyped]
@@ -11,6 +14,41 @@ import plotly.graph_objects as go  # type: ignore[import-untyped]
 from analytics_agent.models.chart_spec import ChartSpec, ChartType
 
 logger = logging.getLogger(__name__)
+
+# Plotly Python ≥ 6.0 serialises numeric arrays as base64 bdata objects
+# (e.g. {"dtype":"f8","bdata":"..."}). Older Plotly.js builds don't recognise
+# this format and fall back to row indices, producing wrong charts. We decode
+# bdata back to plain JSON arrays before the HTML leaves this module.
+_DTYPE_FMT: dict[str, tuple[str, int]] = {
+    "f4": ("f", 4), "f8": ("d", 8),
+    "i1": ("b", 1), "i2": ("h", 2), "i4": ("i", 4), "i8": ("q", 8),
+    "u1": ("B", 1), "u2": ("H", 2), "u4": ("I", 4), "u8": ("Q", 8),
+    "b1": ("?", 1),
+}
+# Matches {"dtype":"f8","bdata":"..."} where the base64 value may contain
+# forward-slash either as "/" or as its JSON-escaped form "\u002f".
+_BDATA_RE = re.compile(
+    r'\{"dtype":"([^"]+)","bdata":"((?:[A-Za-z0-9+/=]|\\u002f)*)"\}'
+)
+
+
+def _decode_bdata(html: str) -> str:
+    """Replace Plotly bdata objects in *html* with plain JSON arrays."""
+
+    def _replace(m: re.Match) -> str:  # type: ignore[type-arg]
+        dtype = m.group(1)
+        b64 = m.group(2).replace("\\u002f", "/")  # unescape HTML-encoded /
+        fmt = _DTYPE_FMT.get(dtype)
+        if fmt is None:
+            return m.group(0)  # Unknown dtype — leave as-is
+        char, size = fmt
+        raw = base64.b64decode(b64)
+        n = len(raw) // size
+        values = struct.unpack(f"{n}{char}", raw[: n * size])
+        # Use compact JSON representation
+        return "[" + ",".join(str(v) for v in values) + "]"
+
+    return _BDATA_RE.sub(_replace, html)
 
 # Colour sequence names accepted by Plotly Express.
 _VALID_COLOR_SEQUENCES = {
@@ -90,7 +128,7 @@ def render_chart(spec: ChartSpec, data: list[dict[str, Any]]) -> str:
         include_plotlyjs=False,  # Plotly JS loaded once in the report template.
         div_id=spec.chart_id,
     )
-    return result
+    return _decode_bdata(result)
 
 
 # ------------------------------------------------------------------
@@ -128,12 +166,13 @@ def _render_bar(
     *,
     horizontal: bool,
 ) -> go.Figure:
-    x_col = spec.y_column if horizontal else spec.x_column
-    y_col = spec.x_column if horizontal else spec.y_column
+    # For horizontal bars the ChartSpec convention is x_column=numeric (bar length),
+    # y_column=categorical (bar position) — matching Plotly's orientation="h" expectation.
+    # No swap needed; orientation="h" tells Plotly to draw bars left-to-right.
     kwargs: dict[str, Any] = {
         "data_frame": data,
-        "x": x_col,
-        "y": y_col,
+        "x": spec.x_column,
+        "y": spec.y_column,
         "title": spec.title,
         "height": spec.height,
     }
@@ -143,7 +182,10 @@ def _render_bar(
         kwargs["orientation"] = "h"
     if color_seq:
         kwargs["color_discrete_sequence"] = color_seq
-    return px.bar(**kwargs)
+    fig = px.bar(**kwargs)
+    if spec.bar_norm:
+        fig.update_layout(barnorm=spec.bar_norm)
+    return fig
 
 
 def _render_pie(

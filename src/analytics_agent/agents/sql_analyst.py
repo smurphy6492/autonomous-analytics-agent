@@ -27,8 +27,13 @@ You will receive:
 Rules:
 - Use ONLY the tables and columns listed in the profile.
 - Write standard DuckDB SQL (PostgreSQL-compatible syntax).
-- Include appropriate GROUP BY and ORDER BY clauses.
+- Include appropriate GROUP BY and ORDER BY clauses. For breakdown queries, ORDER BY the
+  primary metric DESC so the most important rows come first — never sort by category name.
 - Use TRY_CAST or CAST for type conversions where needed.
+- When the purpose mentions "top N" (e.g. "top 10"), you MUST end with ORDER BY <metric> DESC LIMIT N.
+- For revenue, sales, or value metrics always use SUM() — use COUNT() only for counting distinct records.
+- For date range filters (e.g. "past 12 months"), derive the range from MAX(timestamp_column) in the
+  dataset — never use CURRENT_DATE or CURRENT_TIMESTAMP, which will return 0 rows for historical data.
 - Return only the sql field — no commentary, no explanation.
 
 If a previous attempt failed, you will see the exact error message. Fix exactly

@@ -11,15 +11,20 @@ import anthropic
 
 from analytics_agent.agents.base import AgentError, BaseAgent
 from analytics_agent.agents.data_profiler import DataProfilerAgent
-from analytics_agent.agents.orchestrator import OrchestratorAgent
+from analytics_agent.agents.orchestrator import (
+    OrchestratorAgent,
+    _SYNTHESIS_SYSTEM_PROMPT,
+    _build_synthesis_prompt,
+)
 from analytics_agent.agents.sql_analyst import SQLAnalystAgent
 from analytics_agent.agents.viz_agent import VizAgent
 from analytics_agent.config import Settings
 from analytics_agent.db.engine import DuckDBEngine
 from analytics_agent.models.profile import ProfileRequest
 from analytics_agent.models.query_plan import QueryPlanRequest, SQLRequest
-from analytics_agent.models.report import AnalysisReport, SynthesisRequest
+from analytics_agent.models.report import AnalysisReport, AnalysisSynthesis, SynthesisRequest
 from analytics_agent.pipeline.context import PipelineContext
+from analytics_agent.pipeline.validator import validate_chart_html, validate_query_result
 from analytics_agent.report.builder import ReportBuilder
 
 logger = logging.getLogger(__name__)
@@ -111,6 +116,7 @@ class PipelineRunner:
         self._step_plan(ctx)
         self._step_execute(ctx)
         self._step_synthesise(ctx)
+        self._step_validate_coverage(ctx)
         self._step_render_charts(ctx)
 
         ctx.end_time = datetime.now(UTC)
@@ -192,6 +198,9 @@ class PipelineRunner:
                     result.row_count,
                     result.attempts,
                 )
+                for warning in validate_query_result(result):
+                    logger.warning("[QA] %s", warning)
+                    ctx.record_error(f"[QA] {warning}")
             else:
                 msg = (
                     f"Query '{planned.query_id}' failed after "
@@ -228,6 +237,54 @@ class PipelineRunner:
             ctx.record_error(f"Synthesis failed: {exc}")
             raise
 
+    def _step_validate_coverage(self, ctx: PipelineContext) -> None:
+        """Step 4b — Validate that the synthesis covers all question facets.
+
+        If gaps are found, feeds them back into a second synthesis call so the
+        orchestrator can add missing charts or tables.  Runs at most once.
+        """
+        if ctx.synthesis is None or ctx.query_plan is None:
+            return
+
+        try:
+            gaps = self._orchestrator.validate_coverage(
+                ctx.business_question, ctx.synthesis
+            )
+        except AgentError as exc:
+            logger.warning("Coverage validation failed (non-fatal): %s", exc)
+            return
+
+        if not gaps:
+            return
+
+        logger.info(
+            "Coverage gaps found — re-synthesising with feedback: %s", gaps
+        )
+        gap_feedback = (
+            "\n\nCOVERAGE FEEDBACK — the following gaps were identified in your "
+            "previous synthesis. Fix them by adding or modifying charts/tables:\n"
+            + "\n".join(f"- {g}" for g in gaps)
+        )
+
+        try:
+            request = SynthesisRequest(
+                business_question=ctx.business_question,
+                query_plan=ctx.query_plan,
+                query_results=ctx.query_results,
+            )
+            # Append gap feedback to the synthesis prompt.
+            user_prompt = _build_synthesis_prompt(request) + gap_feedback
+            ctx.synthesis = self._orchestrator._base.call_structured(
+                _SYNTHESIS_SYSTEM_PROMPT, user_prompt, AnalysisSynthesis
+            )
+            logger.info(
+                "Re-synthesis complete: %d charts, %d tables",
+                len(ctx.synthesis.chart_specs),
+                len(ctx.synthesis.data_tables),
+            )
+        except AgentError as exc:
+            logger.warning("Re-synthesis failed (using original): %s", exc)
+
     def _step_render_charts(self, ctx: PipelineContext) -> None:
         """Step 5 — Render Plotly charts from chart specs."""
         if ctx.synthesis is None:
@@ -248,6 +305,10 @@ class PipelineRunner:
                 )
                 continue
             rendered = self._viz_agent.render(spec, source_result.data or [])
+            if rendered.success:
+                for warning in validate_chart_html(rendered.html, spec):
+                    logger.warning("[QA] %s", warning)
+                    ctx.record_error(f"[QA] {warning}")
             ctx.rendered_charts.append(rendered)
 
         successful = sum(1 for c in ctx.rendered_charts if c.success)

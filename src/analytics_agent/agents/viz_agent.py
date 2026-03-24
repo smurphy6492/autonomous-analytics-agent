@@ -40,6 +40,8 @@ class VizAgent:
             A :class:`~analytics_agent.models.report.RenderedChart` with the
             rendered HTML on success, or an error message on failure.
         """
+        if spec.max_rows is not None:
+            data = data[: spec.max_rows]
         logger.info(
             "Rendering chart '%s' (%s) from %d rows",
             spec.chart_id,
