@@ -113,6 +113,18 @@ Important guidelines:
 - When multiple query results cover different facets of the question, use charts
   for the most visual facets and tables for detailed comparisons.
 
+Chart design rules:
+- Bar/horizontal_bar sort order: the data sort must match the visual. If data
+  is sorted by a metric, the y_column (bar height) must be that same metric —
+  never sort by one column but display a different column as bar height.
+- When showing multiple components of a total (e.g. processing time + shipping
+  time = total delivery time), do NOT use color_column for a continuous numeric
+  value. Instead, restructure as a stacked bar: reshape so each component is
+  a separate row with a "component" column for color grouping.
+- color_column should be a categorical grouping column (e.g. payment_type,
+  category, region), never a continuous numeric measure. For continuous values,
+  use a separate chart or the y-axis.
+
 Respond with an AnalysisSynthesis JSON object only — no explanation, no markdown.\
 """
 
