@@ -334,4 +334,13 @@ def _apply_layout(fig: go.Figure, spec: ChartSpec) -> None:
         layout_updates["xaxis_title"] = spec.x_label
     if spec.y_label:
         layout_updates["yaxis_title"] = spec.y_label
+
+    # For bar charts with color grouping (stacked/grouped), sort the category
+    # axis by total value descending so the largest bars appear first.
+    if spec.chart_type in (ChartType.BAR, ChartType.HORIZONTAL_BAR) and spec.color_column:
+        if spec.chart_type == ChartType.HORIZONTAL_BAR:
+            layout_updates["yaxis_categoryorder"] = "total ascending"
+        else:
+            layout_updates["xaxis_categoryorder"] = "total descending"
+
     fig.update_layout(**layout_updates)
