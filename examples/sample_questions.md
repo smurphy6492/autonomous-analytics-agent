@@ -94,12 +94,98 @@ These questions cannot be answered with the Olist dataset because the required d
 
 ---
 
+# SaaS Subscription Dataset
+
+Dataset: `data/raw/saas/` (synthetic, 10K customers, 24 months)
+
+## SaaS: Multi-Step Reasoning
+
+1. **Break down MRR growth into new, expansion, contraction, and churned components for the last 12 months**
+   - Requires: subscription status transitions, plan price lookups, monthly aggregation
+   - Tests: metric decomposition, time-series aggregation
+
+2. **What's our net revenue retention by cohort, and which plan tier has the worst churn?**
+   - Requires: cohort definition by signup month, retention calculation, plan-level segmentation
+   - Tests: cohort analysis, multi-table joins
+
+3. **Which customers are most likely to churn in the next 30 days based on usage patterns?**
+   - Requires: join events (usage) with subscriptions, define risk signals, rank customers
+   - Tests: predictive framing from descriptive data
+
+4. **How does feature adoption in the first 7 days correlate with 90-day retention?**
+   - Requires: time-windowed event aggregation, retention definition, correlation analysis
+   - Tests: time-window logic, feature engineering
+
+5. **What's the payback period on our enterprise plan vs. our self-serve plan?**
+   - Requires: trial conversion rates, average lifetime by plan, LTV calculation
+   - Tests: business metric construction from raw data
+
+---
+
+# Financial Market Dataset
+
+Dataset: `data/raw/finance/` (Yahoo Finance, 15 tickers, 5 years daily)
+
+## Finance: Time Series + Comparisons
+
+1. **Which sector outperformed the S&P 500 in 2024, and what drove it?**
+   - Requires: sector-level returns vs SPY, ticker-level attribution within winning sector
+   - Tests: benchmark comparison, group-by aggregation
+
+2. **Calculate the Sharpe ratio for each ticker and rank them. Which stocks have the best risk-adjusted returns?**
+   - Requires: daily returns, annualized return and stddev, risk-free rate assumption
+   - Tests: financial metric construction, statistical calculations
+
+3. **Show me the correlation matrix between these stocks and identify the best diversification pairs**
+   - Requires: daily returns correlation, matrix visualization
+   - Tests: pairwise computation, heatmap chart rendering
+
+4. **What would a portfolio of the top 5 momentum stocks (trailing 6-month return) have returned vs. SPY?**
+   - Requires: rolling return calculation, portfolio construction, backtesting logic
+   - Tests: complex multi-step financial analysis
+
+5. **How has volatility changed over the last 5 years, and which stocks are most volatile right now?**
+   - Requires: rolling standard deviation, time-series comparison
+   - Tests: rolling window calculations, trend analysis
+
+---
+
+# Marketing / Web Analytics Dataset
+
+Dataset: `data/raw/marketing/` (synthetic, 242K sessions, 12 months)
+
+## Marketing: Funnel Analysis + Attribution
+
+1. **What's the conversion rate by channel, and which channel has the best cost-per-acquisition?**
+   - Requires: session-to-transaction join, campaign spend lookup, CPA calculation
+   - Tests: funnel metrics, multi-table join with spend data
+
+2. **Build a weekly cohort analysis of new users. What's the retention curve look like?**
+   - Requires: first-visit date as cohort, return visit tracking, week-over-week retention
+   - Tests: cohort construction, retention curve
+
+3. **Which landing pages have the highest bounce rate but also the highest conversion rate for users who stay?**
+   - Requires: bounce rate by page, conditional conversion (non-bounced only), dual ranking
+   - Tests: conditional filtering, paradox-surfacing analysis
+
+4. **How does mobile vs. desktop conversion differ by traffic source?**
+   - Requires: device x channel cross-tabulation, conversion rate calculation
+   - Tests: pivot/crosstab analysis, segmentation
+
+5. **What's the ROI by campaign? Which campaigns should we scale and which should we cut?**
+   - Requires: campaign spend vs attributed revenue, ROAS calculation, recommendation framing
+   - Tests: business recommendation from data, multi-table analysis
+
+---
+
 ## Demo Scenarios
 
 Recommended question + dataset pairings for portfolio demos:
 
-| Demo | Question | Why It Works |
-|------|----------|--------------|
-| Primary | "What is the monthly revenue trend and which product categories drive the most growth?" | Multi-step, clear output, visually compelling |
-| Secondary | "What is the relationship between delivery time and customer review scores?" | Operational insight, regional segmentation, strong chart potential |
-| Stress test | "Who are our best customers?" | Surfaces clarifying question behavior — good live demo moment |
+| Demo | Dataset | Question | Why It Works |
+|------|---------|----------|--------------|
+| E-Commerce | Olist | "What is the monthly revenue trend and which product categories drive the most growth?" | Multi-step, clear output, visually compelling |
+| SaaS | saas | "Break down MRR growth into new, expansion, contraction, and churned components for the last 12 months" | Director-level metric, shows domain knowledge |
+| Finance | finance | "Which sector outperformed the S&P 500 in 2024, and what drove it?" | Benchmark comparison, sector attribution |
+| Marketing | marketing | "What's the conversion rate by channel, and which channel has the best cost-per-acquisition?" | Funnel analysis, actionable recommendations |
+| Stress test | Olist | "Who are our best customers?" | Surfaces clarifying question behavior |

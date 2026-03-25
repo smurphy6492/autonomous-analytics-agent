@@ -166,7 +166,7 @@ def _rows_to_html(rows: list[dict], spec: DataTableSpec) -> str:  # type: ignore
 
 
 # Column-name patterns used to infer formatting.
-_DOLLAR_KEYWORDS = ("revenue", "price", "cost", "sales", "spend", "payment", "value", "clv", "ltv")
+_DOLLAR_KEYWORDS = ("revenue", "price", "cost", "sales", "spend", "payment", "value", "clv", "ltv", "cpa", "acquisition", "budget", "mrr", "arr")
 _PERCENT_KEYWORDS = ("pct", "percent", "share", "rate", "ratio")
 _COUNT_KEYWORDS = ("count", "orders", "items", "quantity", "num_", "total_orders", "total_items")
 

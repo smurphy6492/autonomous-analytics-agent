@@ -41,6 +41,29 @@ Rules:
 Respond with PASS or GAPS only — no preamble, no explanation beyond the list.\
 """
 
+_SANITY_CHECK_SYSTEM_PROMPT = """\
+You are a data quality reviewer. Your job is to check whether key metrics in an
+analytics report are plausible given the underlying data.
+
+You will receive:
+1. A brief data profile summary (tables, row counts, column ranges).
+2. The key metrics from the report (label + value pairs).
+
+Your task: flag any metric that is implausible by orders of magnitude. Examples:
+- Cost-per-acquisition > $1,000 for a consumer e-commerce site
+- Total spend exceeding what's possible given campaign budgets in the data
+- Revenue figures that imply impossible average order values
+- Percentages outside 0-100% that aren't explicitly growth rates
+- Counts that exceed the total rows in the source table
+
+Only flag clear errors — values that are obviously wrong, not just surprising.
+If all metrics look reasonable, respond with exactly: PASS
+If there are issues, respond with: ISSUES: followed by a numbered list explaining
+what looks wrong and why, referencing the data profile for context.
+
+Respond with PASS or ISSUES only — no preamble.\
+"""
+
 _PLAN_SYSTEM_PROMPT = """\
 You are an analytics orchestrator agent. Your job is to decide what SQL analyses
 are needed to answer a business question given a structured data profile.
@@ -253,6 +276,64 @@ class OrchestratorAgent:
             logger.info("Coverage validation: PASS (no gaps parsed)")
 
         return gaps
+
+    def validate_metric_sanity(
+        self,
+        synthesis: AnalysisSynthesis,
+        profile_summary: str,
+    ) -> list[str]:
+        """Check whether key metrics are plausible given the data profile.
+
+        Makes a lightweight LLM call to review metric values against the
+        data profile context. Returns an empty list if all metrics look
+        reasonable, or a list of issue descriptions if any are implausible.
+
+        Args:
+            synthesis: The current synthesis output with key metrics.
+            profile_summary: A text summary of the data profile (tables,
+                row counts, column ranges) for context.
+
+        Returns:
+            A list of issue descriptions (empty if PASS).
+        """
+        if not synthesis.key_metrics:
+            return []
+
+        lines: list[str] = [
+            "Data profile summary:",
+            profile_summary,
+            "",
+            "Key metrics from the report:",
+        ]
+        for m in synthesis.key_metrics:
+            lines.append(f"  - {m.label}: {m.value}")
+
+        user_prompt = "\n".join(lines)
+        logger.info("Validating metric sanity…")
+        response = self._base.call(_SANITY_CHECK_SYSTEM_PROMPT, user_prompt)
+        response = response.strip()
+
+        if response.upper().startswith("PASS"):
+            logger.info("Metric sanity check: PASS")
+            return []
+
+        issues: list[str] = []
+        for line in response.splitlines():
+            line = line.strip()
+            if not line or line.upper().startswith("ISSUES"):
+                continue
+            cleaned = line.lstrip("0123456789.) ").strip("- ")
+            if cleaned:
+                issues.append(cleaned)
+
+        if issues:
+            logger.warning(
+                "Metric sanity check found %d issue(s): %s", len(issues), issues
+            )
+        else:
+            logger.info("Metric sanity check: PASS (no issues parsed)")
+
+        return issues
 
 
 # ------------------------------------------------------------------

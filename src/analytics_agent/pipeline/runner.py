@@ -117,6 +117,7 @@ class PipelineRunner:
         self._step_execute(ctx)
         self._step_synthesise(ctx)
         self._step_validate_coverage(ctx)
+        self._step_validate_metric_sanity(ctx)
         self._step_render_charts(ctx)
 
         ctx.end_time = datetime.now(UTC)
@@ -200,7 +201,6 @@ class PipelineRunner:
                 )
                 for warning in validate_query_result(result):
                     logger.warning("[QA] %s", warning)
-                    ctx.record_error(f"[QA] {warning}")
             else:
                 msg = (
                     f"Query '{planned.query_id}' failed after "
@@ -285,6 +285,35 @@ class PipelineRunner:
         except AgentError as exc:
             logger.warning("Re-synthesis failed (using original): %s", exc)
 
+    def _step_validate_metric_sanity(self, ctx: PipelineContext) -> None:
+        """Step 4b — Check whether key metrics are plausible given the data."""
+        if ctx.synthesis is None or ctx.profile is None:
+            return
+
+        # Build a concise profile summary for context.
+        lines: list[str] = []
+        for table in ctx.profile.tables:
+            lines.append(f"Table '{table.name}': {table.row_count} rows")
+            for col in table.columns:
+                extras = []
+                if col.min_value is not None:
+                    extras.append(f"min={col.min_value}")
+                if col.max_value is not None:
+                    extras.append(f"max={col.max_value}")
+                if col.cardinality is not None:
+                    extras.append(f"cardinality={col.cardinality}")
+                suffix = f" ({', '.join(extras)})" if extras else ""
+                lines.append(f"  - {col.name} [{col.dtype}]{suffix}")
+
+        profile_summary = "\n".join(lines)
+
+        issues = self._orchestrator.validate_metric_sanity(
+            ctx.synthesis, profile_summary
+        )
+
+        for issue in issues:
+            logger.warning("[Metric sanity] %s", issue)
+
     def _step_render_charts(self, ctx: PipelineContext) -> None:
         """Step 5 — Render Plotly charts from chart specs."""
         if ctx.synthesis is None:
@@ -308,7 +337,6 @@ class PipelineRunner:
             if rendered.success:
                 for warning in validate_chart_html(rendered.html, spec):
                     logger.warning("[QA] %s", warning)
-                    ctx.record_error(f"[QA] {warning}")
             ctx.rendered_charts.append(rendered)
 
         successful = sum(1 for c in ctx.rendered_charts if c.success)
