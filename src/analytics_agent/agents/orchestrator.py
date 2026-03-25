@@ -116,6 +116,9 @@ chart_specs: 2-4 chart specifications. Each distinct facet of the business
   - max_rows: set this to limit how many rows appear in the chart (e.g. 10 for
     a "top 10" bar chart). The query may return more rows than needed for the
     chart — use max_rows to display only the most relevant subset.
+  - bar_mode: set to "group" for side-by-side grouped bars when comparing
+    metrics across categories. Default is stacked. Use "group" whenever the
+    y-axis is a rate, ratio, average, or percentage.
   - bar_norm: set to "percent" for 100% stacked bar charts that show the
     percentage breakdown per group (e.g. payment method share per state).
     Use this when the absolute counts vary widely but the composition matters.
@@ -147,6 +150,11 @@ Chart design rules:
 - color_column should be a categorical grouping column (e.g. payment_type,
   category, region), never a continuous numeric measure. For continuous values,
   use a separate chart or the y-axis.
+- NEVER use stacked bars for rates, ratios, averages, or percentages (e.g.
+  conversion rate, CPA, avg revenue, retention %). Stacked bars only make sense
+  for additive amounts (revenue, counts, spend) where segments sum to a
+  meaningful total. For comparing calculated metrics across groups, use grouped
+  bars (barmode="group") or separate charts.
 
 Respond with an AnalysisSynthesis JSON object only — no explanation, no markdown.\
 """

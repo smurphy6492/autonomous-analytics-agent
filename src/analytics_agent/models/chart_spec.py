@@ -45,6 +45,7 @@ class ChartSpec(BaseModel):
     max_rows: int | None = None  # truncate data to top-N rows before rendering
 
     # Bar chart options
+    bar_mode: str | None = None  # "group" for side-by-side bars, "stack" for stacked (default)
     bar_norm: str | None = None  # "percent" for 100% stacked bars, None for default
 
     # Formatting

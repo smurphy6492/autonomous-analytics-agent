@@ -183,6 +183,8 @@ def _render_bar(
     if color_seq:
         kwargs["color_discrete_sequence"] = color_seq
     fig = px.bar(**kwargs)
+    if spec.bar_mode:
+        fig.update_layout(barmode=spec.bar_mode)
     if spec.bar_norm:
         fig.update_layout(barnorm=spec.bar_norm)
     return fig
