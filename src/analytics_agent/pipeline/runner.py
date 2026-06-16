@@ -12,8 +12,8 @@ import anthropic
 from analytics_agent.agents.base import AgentError, BaseAgent
 from analytics_agent.agents.data_profiler import DataProfilerAgent
 from analytics_agent.agents.orchestrator import (
-    OrchestratorAgent,
     _SYNTHESIS_SYSTEM_PROMPT,
+    OrchestratorAgent,
     _build_synthesis_prompt,
 )
 from analytics_agent.agents.sql_analyst import SQLAnalystAgent
@@ -22,9 +22,16 @@ from analytics_agent.config import Settings
 from analytics_agent.db.engine import DuckDBEngine
 from analytics_agent.models.profile import ProfileRequest
 from analytics_agent.models.query_plan import QueryPlanRequest, SQLRequest
-from analytics_agent.models.report import AnalysisReport, AnalysisSynthesis, SynthesisRequest
+from analytics_agent.models.report import (
+    AnalysisReport,
+    AnalysisSynthesis,
+    SynthesisRequest,
+)
 from analytics_agent.pipeline.context import PipelineContext
-from analytics_agent.pipeline.validator import validate_chart_html, validate_query_result
+from analytics_agent.pipeline.validator import (
+    validate_chart_html,
+    validate_query_result,
+)
 from analytics_agent.report.builder import ReportBuilder
 
 logger = logging.getLogger(__name__)
@@ -257,9 +264,7 @@ class PipelineRunner:
         if not gaps:
             return
 
-        logger.info(
-            "Coverage gaps found — re-synthesising with feedback: %s", gaps
-        )
+        logger.info("Coverage gaps found — re-synthesising with feedback: %s", gaps)
         gap_feedback = (
             "\n\nCOVERAGE FEEDBACK — the following gaps were identified in your "
             "previous synthesis. Fix them by adding or modifying charts/tables:\n"

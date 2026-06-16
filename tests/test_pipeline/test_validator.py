@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
 from analytics_agent.models.chart_spec import ChartSpec, ChartType
 from analytics_agent.models.query_plan import QueryResult
-from analytics_agent.pipeline.validator import validate_chart_html, validate_query_result
-
+from analytics_agent.pipeline.validator import (
+    validate_chart_html,
+    validate_query_result,
+)
 
 # ------------------------------------------------------------------
 # Helpers
@@ -118,7 +118,10 @@ class TestValidateQueryResult:
 
     def test_bool_columns_not_flagged_as_sequential(self) -> None:
         # bool is a subclass of int — [False, True, False, True] should not warn.
-        data = [{"active": b, "revenue": float(i * 50)} for i, b in enumerate([False, True, False, True, False])]
+        data = [
+            {"active": b, "revenue": float(i * 50)}
+            for i, b in enumerate([False, True, False, True, False])
+        ]
         result = _make_result(row_count=5, data=data)
         warnings = validate_query_result(result)
         # "active" column should not trigger sequential-index warning.
@@ -204,7 +207,7 @@ class TestValidateChartHtml:
         # Representative values from the Olist dataset.
         html = (
             '<script>Plotly.newPlot("c",[{"x":[1233131.72,1166176.98,1023434.76,'
-            '954852.55,888724.61,711927.69,615628.69,610204.1,578966.65,471286.48],'
+            "954852.55,888724.61,711927.69,615628.69,610204.1,578966.65,471286.48],"
             '"y":["health_beauty","watches_gifts","bed_bath_table","sports_leisure",'
             '"computers_accessories","furniture_decor","housewares","cool_stuff",'
             '"auto","toys"],"type":"bar","orientation":"h"}],{});</script>'

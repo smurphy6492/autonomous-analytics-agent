@@ -3,7 +3,8 @@
 Produces 5 CSV files in data/raw/saas/:
   - plans.csv: pricing tiers (Starter, Pro, Enterprise)
   - customers.csv: ~10K customers with signup dates and metadata
-  - subscriptions.csv: subscription lifecycle events (created, upgraded, downgraded, churned)
+  - subscriptions.csv: subscription lifecycle events (created, upgraded,
+    downgraded, churned)
   - invoices.csv: monthly billing records with MRR
   - events.csv: daily product usage (logins, API calls, features used)
 
@@ -28,18 +29,57 @@ END_DATE = date(2025, 12, 31)
 NUM_CUSTOMERS = 10_000
 
 PLANS = [
-    {"plan_id": "starter", "plan_name": "Starter", "monthly_price": 29, "annual_price": 290, "seat_limit": 3, "api_limit": 1000},
-    {"plan_id": "pro", "plan_name": "Pro", "monthly_price": 99, "annual_price": 990, "seat_limit": 15, "api_limit": 10000},
-    {"plan_id": "enterprise", "plan_name": "Enterprise", "monthly_price": 349, "annual_price": 3490, "seat_limit": 999, "api_limit": 100000},
+    {
+        "plan_id": "starter",
+        "plan_name": "Starter",
+        "monthly_price": 29,
+        "annual_price": 290,
+        "seat_limit": 3,
+        "api_limit": 1000,
+    },
+    {
+        "plan_id": "pro",
+        "plan_name": "Pro",
+        "monthly_price": 99,
+        "annual_price": 990,
+        "seat_limit": 15,
+        "api_limit": 10000,
+    },
+    {
+        "plan_id": "enterprise",
+        "plan_name": "Enterprise",
+        "monthly_price": 349,
+        "annual_price": 3490,
+        "seat_limit": 999,
+        "api_limit": 100000,
+    },
 ]
 
 PLAN_PRICES = {p["plan_id"]: p["monthly_price"] for p in PLANS}
 PLAN_IDS = [p["plan_id"] for p in PLANS]
 
-INDUSTRIES = ["Technology", "Healthcare", "Finance", "Retail", "Education", "Manufacturing", "Media", "Real Estate"]
+INDUSTRIES = [
+    "Technology",
+    "Healthcare",
+    "Finance",
+    "Retail",
+    "Education",
+    "Manufacturing",
+    "Media",
+    "Real Estate",
+]
 COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-1000", "1001+"]
 SOURCES = ["organic", "paid_search", "referral", "partner", "outbound"]
-FEATURES = ["dashboard", "reports", "api", "integrations", "alerts", "exports", "collaboration", "advanced_analytics"]
+FEATURES = [
+    "dashboard",
+    "reports",
+    "api",
+    "integrations",
+    "alerts",
+    "exports",
+    "collaboration",
+    "advanced_analytics",
+]
 
 
 def random_date(start: date, end: date) -> date:
@@ -47,8 +87,13 @@ def random_date(start: date, end: date) -> date:
     return start + timedelta(days=random.randint(0, delta))
 
 
-def monthly_churn_rate(plan_id: str, month: int, months_active: int, avg_daily_logins: float) -> float:
-    """Churn probability for a given month. Depends on plan, tenure, season, and usage."""
+def monthly_churn_rate(
+    plan_id: str, month: int, months_active: int, avg_daily_logins: float
+) -> float:
+    """Churn probability for a given month.
+
+    Depends on plan, tenure, season, and usage.
+    """
     base = {"starter": 0.06, "pro": 0.03, "enterprise": 0.01}[plan_id]
 
     # New customers churn more (first 3 months)
@@ -102,20 +147,22 @@ def generate_customers() -> list[dict]:
         else:
             plan = random.choices(PLAN_IDS, weights=[55, 35, 10], k=1)[0]
 
-        customers.append({
-            "customer_id": f"cust_{i:05d}",
-            "company_name": f"Company_{i}",
-            "industry": industry,
-            "company_size": size,
-            "signup_date": signup.isoformat(),
-            "acquisition_source": source,
-            "initial_plan": plan,
-            "country": random.choices(
-                ["US", "UK", "CA", "DE", "AU", "FR", "BR", "IN"],
-                weights=[40, 12, 10, 8, 7, 6, 5, 12],
-                k=1,
-            )[0],
-        })
+        customers.append(
+            {
+                "customer_id": f"cust_{i:05d}",
+                "company_name": f"Company_{i}",
+                "industry": industry,
+                "company_size": size,
+                "signup_date": signup.isoformat(),
+                "acquisition_source": source,
+                "initial_plan": plan,
+                "country": random.choices(
+                    ["US", "UK", "CA", "DE", "AU", "FR", "BR", "IN"],
+                    weights=[40, 12, 10, 8, 7, 6, 5, 12],
+                    k=1,
+                )[0],
+            }
+        )
 
     path = OUTPUT_DIR / "customers.csv"
     with open(path, "w", newline="") as f:
@@ -126,7 +173,9 @@ def generate_customers() -> list[dict]:
     return customers
 
 
-def generate_subscriptions_and_invoices(customers: list[dict]) -> tuple[list[dict], list[dict]]:
+def generate_subscriptions_and_invoices(
+    customers: list[dict],
+) -> tuple[list[dict], list[dict]]:
     subscriptions = []
     invoices = []
     sub_id = 0
@@ -142,15 +191,17 @@ def generate_subscriptions_and_invoices(customers: list[dict]) -> tuple[list[dic
         if random.random() > 0.60:
             # Didn't convert from trial
             sub_id += 1
-            subscriptions.append({
-                "subscription_id": f"sub_{sub_id:06d}",
-                "customer_id": cust_id,
-                "plan_id": current_plan,
-                "status": "trial_expired",
-                "started_at": signup.isoformat(),
-                "ended_at": trial_end.isoformat(),
-                "mrr": 0,
-            })
+            subscriptions.append(
+                {
+                    "subscription_id": f"sub_{sub_id:06d}",
+                    "customer_id": cust_id,
+                    "plan_id": current_plan,
+                    "status": "trial_expired",
+                    "started_at": signup.isoformat(),
+                    "ended_at": trial_end.isoformat(),
+                    "mrr": 0,
+                }
+            )
             continue
 
         # Converted from trial
@@ -167,84 +218,101 @@ def generate_subscriptions_and_invoices(customers: list[dict]) -> tuple[list[dic
 
         while current_date <= END_DATE and not churned:
             months_active += 1
-            month_end = (current_date.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+            month_end = (current_date.replace(day=28) + timedelta(days=4)).replace(
+                day=1
+            ) - timedelta(days=1)
             mrr = PLAN_PRICES[current_plan]
 
             # Invoice
             inv_id += 1
-            invoices.append({
-                "invoice_id": f"inv_{inv_id:07d}",
-                "customer_id": cust_id,
-                "subscription_id": active_sub_id,
-                "plan_id": current_plan,
-                "invoice_date": current_date.isoformat(),
-                "amount": mrr,
-                "status": "paid",
-            })
+            invoices.append(
+                {
+                    "invoice_id": f"inv_{inv_id:07d}",
+                    "customer_id": cust_id,
+                    "subscription_id": active_sub_id,
+                    "plan_id": current_plan,
+                    "invoice_date": current_date.isoformat(),
+                    "amount": mrr,
+                    "status": "paid",
+                }
+            )
 
             # Check for churn
-            churn_prob = monthly_churn_rate(current_plan, current_date.month, months_active, avg_daily_logins)
+            churn_prob = monthly_churn_rate(
+                current_plan, current_date.month, months_active, avg_daily_logins
+            )
             if random.random() < churn_prob and months_active >= 2:
                 churned = True
-                subscriptions.append({
-                    "subscription_id": active_sub_id,
-                    "customer_id": cust_id,
-                    "plan_id": current_plan,
-                    "status": "churned",
-                    "started_at": sub_start.isoformat(),
-                    "ended_at": month_end.isoformat(),
-                    "mrr": mrr,
-                })
+                subscriptions.append(
+                    {
+                        "subscription_id": active_sub_id,
+                        "customer_id": cust_id,
+                        "plan_id": current_plan,
+                        "status": "churned",
+                        "started_at": sub_start.isoformat(),
+                        "ended_at": month_end.isoformat(),
+                        "mrr": mrr,
+                    }
+                )
                 break
 
-            # Check for plan change (5% upgrade, 2% downgrade per month for eligible plans)
+            # Check for plan change (5% upgrade, 2% downgrade per month for
+            # eligible plans)
             if months_active >= 3 and not churned:
                 plan_idx = PLAN_IDS.index(current_plan)
                 if plan_idx < 2 and random.random() < 0.05:
                     old_plan = current_plan
                     current_plan = PLAN_IDS[plan_idx + 1]
                     sub_id += 1
-                    subscriptions.append({
-                        "subscription_id": active_sub_id,
-                        "customer_id": cust_id,
-                        "plan_id": old_plan,
-                        "status": "upgraded",
-                        "started_at": sub_start.isoformat(),
-                        "ended_at": current_date.isoformat(),
-                        "mrr": PLAN_PRICES[old_plan],
-                    })
+                    subscriptions.append(
+                        {
+                            "subscription_id": active_sub_id,
+                            "customer_id": cust_id,
+                            "plan_id": old_plan,
+                            "status": "upgraded",
+                            "started_at": sub_start.isoformat(),
+                            "ended_at": current_date.isoformat(),
+                            "mrr": PLAN_PRICES[old_plan],
+                        }
+                    )
                     active_sub_id = f"sub_{sub_id:06d}"
                     sub_start = current_date
                 elif plan_idx > 0 and random.random() < 0.02:
                     old_plan = current_plan
                     current_plan = PLAN_IDS[plan_idx - 1]
                     sub_id += 1
-                    subscriptions.append({
-                        "subscription_id": active_sub_id,
-                        "customer_id": cust_id,
-                        "plan_id": old_plan,
-                        "status": "downgraded",
-                        "started_at": sub_start.isoformat(),
-                        "ended_at": current_date.isoformat(),
-                        "mrr": PLAN_PRICES[old_plan],
-                    })
+                    subscriptions.append(
+                        {
+                            "subscription_id": active_sub_id,
+                            "customer_id": cust_id,
+                            "plan_id": old_plan,
+                            "status": "downgraded",
+                            "started_at": sub_start.isoformat(),
+                            "ended_at": current_date.isoformat(),
+                            "mrr": PLAN_PRICES[old_plan],
+                        }
+                    )
                     active_sub_id = f"sub_{sub_id:06d}"
                     sub_start = current_date
 
             # Advance to next month
-            current_date = (current_date.replace(day=28) + timedelta(days=4)).replace(day=1)
+            current_date = (current_date.replace(day=28) + timedelta(days=4)).replace(
+                day=1
+            )
 
         # If still active at end of period
         if not churned:
-            subscriptions.append({
-                "subscription_id": active_sub_id,
-                "customer_id": cust_id,
-                "plan_id": current_plan,
-                "status": "active",
-                "started_at": sub_start.isoformat(),
-                "ended_at": "",
-                "mrr": PLAN_PRICES[current_plan],
-            })
+            subscriptions.append(
+                {
+                    "subscription_id": active_sub_id,
+                    "customer_id": cust_id,
+                    "plan_id": current_plan,
+                    "status": "active",
+                    "started_at": sub_start.isoformat(),
+                    "ended_at": "",
+                    "mrr": PLAN_PRICES[current_plan],
+                }
+            )
 
     path = OUTPUT_DIR / "subscriptions.csv"
     with open(path, "w", newline="") as f:
@@ -300,19 +368,23 @@ def generate_events(customers: list[dict], subscriptions: list[dict]) -> None:
 
                 logins = max(0, int(random.gauss(base_logins * day_factor, 1.0)))
                 api_calls = max(0, int(random.gauss(base_api_calls * day_factor, 15)))
-                features_used = random.sample(FEATURES, k=min(random.randint(1, 5), len(FEATURES)))
+                features_used = random.sample(
+                    FEATURES, k=min(random.randint(1, 5), len(FEATURES))
+                )
 
                 if logins > 0 or api_calls > 0:
                     event_id += 1
-                    events.append({
-                        "event_id": f"evt_{event_id:08d}",
-                        "customer_id": cust_id,
-                        "event_date": current.isoformat(),
-                        "logins": logins,
-                        "api_calls": api_calls,
-                        "features_used": len(features_used),
-                        "feature_list": "|".join(features_used),
-                    })
+                    events.append(
+                        {
+                            "event_id": f"evt_{event_id:08d}",
+                            "customer_id": cust_id,
+                            "event_date": current.isoformat(),
+                            "logins": logins,
+                            "api_calls": api_calls,
+                            "features_used": len(features_used),
+                            "feature_list": "|".join(features_used),
+                        }
+                    )
 
                 current += timedelta(days=1)
 

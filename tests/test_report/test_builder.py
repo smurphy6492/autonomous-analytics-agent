@@ -348,8 +348,8 @@ class TestRowsToHtml:
         spec = DataTableSpec(table_id="t", title="T", data_source="q")
         rows = [{"category": "electronics", "revenue": 100}]
         html = _rows_to_html(rows, spec)
-        assert "<th>category</th>" in html
-        assert "<th>revenue</th>" in html
+        assert "<th>Category</th>" in html
+        assert "<th>Revenue</th>" in html
 
     def test_header_filtered_by_columns(self) -> None:
         spec = DataTableSpec(
@@ -357,8 +357,8 @@ class TestRowsToHtml:
         )
         rows = [{"category": "electronics", "revenue": 100}]
         html = _rows_to_html(rows, spec)
-        assert "category" in html
-        assert "revenue" not in html
+        assert "Category" in html
+        assert "Revenue" not in html
 
     def test_empty_rows_returns_placeholder(self) -> None:
         spec = DataTableSpec(table_id="t", title="T", data_source="q")
