@@ -230,6 +230,15 @@ src/analytics_agent/
 
 ## Development
 
+### Setup
+
+```bash
+make install        # installs the package with dev tools and wires pre-commit
+```
+
+`make install` runs `pre-commit install`, so the ruff and mypy hooks run on staged files before every commit.
+The same `make check` runs in CI on every push and pull request (`.github/workflows/ci.yml`), so a change that fails lint, type-check, or tests cannot merge.
+
 ### Run checks
 
 ```bash
