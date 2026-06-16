@@ -177,6 +177,8 @@ def _parse_float_array(raw: str) -> list[float]:
     any parse failure.
     """
     try:
-        return [float(v) for v in re.findall(r"-?[\d]+(?:\.\d+)?(?:[eE][+\-]?\d+)?", raw)]
+        return [
+            float(v) for v in re.findall(r"-?[\d]+(?:\.\d+)?(?:[eE][+\-]?\d+)?", raw)
+        ]
     except ValueError:
         return []

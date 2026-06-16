@@ -1,7 +1,8 @@
 """Generate realistic synthetic marketing/web analytics dataset.
 
 Produces 4 CSV files in data/raw/marketing/:
-  - sessions.csv: ~200K sessions over 12 months with traffic source, device, landing page
+  - sessions.csv: ~200K sessions over 12 months with traffic source,
+    device, landing page
   - pageviews.csv: ~800K pageviews tied to sessions
   - transactions.csv: ~15K purchases with revenue, tied to sessions
   - campaigns.csv: paid campaign metadata with spend
@@ -43,26 +44,93 @@ DEVICES = {
 }
 
 LANDING_PAGES = [
-    "/", "/products", "/products/category/electronics", "/products/category/clothing",
-    "/products/category/home", "/sale", "/blog", "/blog/gift-guide",
-    "/about", "/products/category/accessories",
+    "/",
+    "/products",
+    "/products/category/electronics",
+    "/products/category/clothing",
+    "/products/category/home",
+    "/sale",
+    "/blog",
+    "/blog/gift-guide",
+    "/about",
+    "/products/category/accessories",
 ]
 
-PRODUCT_CATEGORIES = ["Electronics", "Clothing", "Home & Garden", "Accessories", "Sports", "Books", "Beauty"]
+PRODUCT_CATEGORIES = [
+    "Electronics",
+    "Clothing",
+    "Home & Garden",
+    "Accessories",
+    "Sports",
+    "Books",
+    "Beauty",
+]
+
 
 def _build_campaigns() -> list[dict]:
     """Build campaign list with pre-computed total_spend."""
     raw = [
-        {"campaign_id": "camp_001", "campaign_name": "Spring Sale 2025", "channel": "paid_search", "start_date": "2025-03-01", "end_date": "2025-03-31", "daily_budget": 500},
-        {"campaign_id": "camp_002", "campaign_name": "Summer Push", "channel": "paid_search", "start_date": "2025-06-01", "end_date": "2025-08-31", "daily_budget": 750},
-        {"campaign_id": "camp_003", "campaign_name": "Back to School", "channel": "social", "start_date": "2025-08-15", "end_date": "2025-09-15", "daily_budget": 400},
-        {"campaign_id": "camp_004", "campaign_name": "Black Friday", "channel": "paid_search", "start_date": "2025-11-20", "end_date": "2025-12-02", "daily_budget": 2000},
-        {"campaign_id": "camp_005", "campaign_name": "Holiday Email", "channel": "email", "start_date": "2025-11-15", "end_date": "2025-12-25", "daily_budget": 200},
-        {"campaign_id": "camp_006", "campaign_name": "Social Retargeting", "channel": "social", "start_date": "2025-01-01", "end_date": "2025-12-31", "daily_budget": 150},
-        {"campaign_id": "camp_007", "campaign_name": "Brand Search", "channel": "paid_search", "start_date": "2025-01-01", "end_date": "2025-12-31", "daily_budget": 300},
+        {
+            "campaign_id": "camp_001",
+            "campaign_name": "Spring Sale 2025",
+            "channel": "paid_search",
+            "start_date": "2025-03-01",
+            "end_date": "2025-03-31",
+            "daily_budget": 500,
+        },
+        {
+            "campaign_id": "camp_002",
+            "campaign_name": "Summer Push",
+            "channel": "paid_search",
+            "start_date": "2025-06-01",
+            "end_date": "2025-08-31",
+            "daily_budget": 750,
+        },
+        {
+            "campaign_id": "camp_003",
+            "campaign_name": "Back to School",
+            "channel": "social",
+            "start_date": "2025-08-15",
+            "end_date": "2025-09-15",
+            "daily_budget": 400,
+        },
+        {
+            "campaign_id": "camp_004",
+            "campaign_name": "Black Friday",
+            "channel": "paid_search",
+            "start_date": "2025-11-20",
+            "end_date": "2025-12-02",
+            "daily_budget": 2000,
+        },
+        {
+            "campaign_id": "camp_005",
+            "campaign_name": "Holiday Email",
+            "channel": "email",
+            "start_date": "2025-11-15",
+            "end_date": "2025-12-25",
+            "daily_budget": 200,
+        },
+        {
+            "campaign_id": "camp_006",
+            "campaign_name": "Social Retargeting",
+            "channel": "social",
+            "start_date": "2025-01-01",
+            "end_date": "2025-12-31",
+            "daily_budget": 150,
+        },
+        {
+            "campaign_id": "camp_007",
+            "campaign_name": "Brand Search",
+            "channel": "paid_search",
+            "start_date": "2025-01-01",
+            "end_date": "2025-12-31",
+            "daily_budget": 300,
+        },
     ]
     for c in raw:
-        days = (date.fromisoformat(c["end_date"]) - date.fromisoformat(c["start_date"])).days + 1
+        days = (
+            date.fromisoformat(c["end_date"]) - date.fromisoformat(c["start_date"])
+        ).days + 1
         c["days_active"] = days
         c["total_spend"] = c["daily_budget"] * days
     return raw
@@ -167,10 +235,42 @@ def main() -> None:
             # Hour of day (peak 10am-9pm)
             hour = random.choices(
                 range(24),
-                weights=[1, 1, 1, 1, 1, 2, 3, 5, 7, 9, 10, 10, 9, 9, 8, 8, 9, 10, 10, 9, 7, 5, 3, 2],
+                weights=[
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    2,
+                    3,
+                    5,
+                    7,
+                    9,
+                    10,
+                    10,
+                    9,
+                    9,
+                    8,
+                    8,
+                    9,
+                    10,
+                    10,
+                    9,
+                    7,
+                    5,
+                    3,
+                    2,
+                ],
                 k=1,
             )[0]
-            session_start = datetime(current.year, current.month, current.day, hour, random.randint(0, 59), random.randint(0, 59))
+            session_start = datetime(
+                current.year,
+                current.month,
+                current.day,
+                hour,
+                random.randint(0, 59),
+                random.randint(0, 59),
+            )
 
             # Assign campaign if applicable
             campaign_id = ""
@@ -183,24 +283,26 @@ def main() -> None:
                             campaign_id = camp["campaign_id"]
                             break
 
-            sessions.append({
-                "session_id": f"sess_{session_id:07d}",
-                "user_id": user_id,
-                "session_date": current.isoformat(),
-                "session_start": session_start.isoformat(),
-                "channel": channel,
-                "device": device,
-                "landing_page": landing,
-                "pages_viewed": pages,
-                "duration_seconds": duration_sec,
-                "bounced": 1 if bounced else 0,
-                "campaign_id": campaign_id,
-                "country": random.choices(
-                    ["US", "UK", "CA", "DE", "AU", "FR"],
-                    weights=[50, 15, 10, 8, 7, 10],
-                    k=1,
-                )[0],
-            })
+            sessions.append(
+                {
+                    "session_id": f"sess_{session_id:07d}",
+                    "user_id": user_id,
+                    "session_date": current.isoformat(),
+                    "session_start": session_start.isoformat(),
+                    "channel": channel,
+                    "device": device,
+                    "landing_page": landing,
+                    "pages_viewed": pages,
+                    "duration_seconds": duration_sec,
+                    "bounced": 1 if bounced else 0,
+                    "campaign_id": campaign_id,
+                    "country": random.choices(
+                        ["US", "UK", "CA", "DE", "AU", "FR"],
+                        weights=[50, 15, 10, 8, 7, 10],
+                        k=1,
+                    )[0],
+                }
+            )
 
             # Generate pageviews
             viewed_pages = [landing]
@@ -208,13 +310,17 @@ def main() -> None:
                 viewed_pages.append(random.choice(LANDING_PAGES))
             for i, page in enumerate(viewed_pages):
                 pv_id += 1
-                pageviews.append({
-                    "pageview_id": f"pv_{pv_id:08d}",
-                    "session_id": f"sess_{session_id:07d}",
-                    "page_url": page,
-                    "page_number": i + 1,
-                    "time_on_page_seconds": random.randint(5, 180) if i < len(viewed_pages) - 1 else 0,
-                })
+                pageviews.append(
+                    {
+                        "pageview_id": f"pv_{pv_id:08d}",
+                        "session_id": f"sess_{session_id:07d}",
+                        "page_url": page,
+                        "page_number": i + 1,
+                        "time_on_page_seconds": random.randint(5, 180)
+                        if i < len(viewed_pages) - 1
+                        else 0,
+                    }
+                )
 
             # Conversion
             if not bounced:
@@ -224,18 +330,22 @@ def main() -> None:
                     cvr *= 1.3
                 if random.random() < cvr:
                     txn_id += 1
-                    num_items = random.choices([1, 2, 3, 4, 5], weights=[50, 25, 15, 7, 3], k=1)[0]
+                    num_items = random.choices(
+                        [1, 2, 3, 4, 5], weights=[50, 25, 15, 7, 3], k=1
+                    )[0]
                     avg_item_price = random.gauss(55, 25)
                     revenue = round(max(10, num_items * max(5, avg_item_price)), 2)
-                    transactions.append({
-                        "transaction_id": f"txn_{txn_id:06d}",
-                        "session_id": f"sess_{session_id:07d}",
-                        "transaction_date": current.isoformat(),
-                        "revenue": revenue,
-                        "items": num_items,
-                        "category": random.choice(PRODUCT_CATEGORIES),
-                        "coupon_used": 1 if random.random() < 0.2 else 0,
-                    })
+                    transactions.append(
+                        {
+                            "transaction_id": f"txn_{txn_id:06d}",
+                            "session_id": f"sess_{session_id:07d}",
+                            "transaction_date": current.isoformat(),
+                            "revenue": revenue,
+                            "items": num_items,
+                            "category": random.choice(PRODUCT_CATEGORIES),
+                            "coupon_used": 1 if random.random() < 0.2 else 0,
+                        }
+                    )
 
         current += timedelta(days=1)
 

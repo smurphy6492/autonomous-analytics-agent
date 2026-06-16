@@ -94,27 +94,30 @@ def download_prices() -> None:
     rows = []
     for ticker in ticker_list:
         try:
-            if len(ticker_list) == 1:
-                df = data
-            else:
-                df = data[ticker]
+            df = data if len(ticker_list) == 1 else data[ticker]
             df = df.dropna(subset=["Close"])
             for idx, row in df.iterrows():
-                rows.append({
-                    "date": idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx),
-                    "ticker": ticker,
-                    "open": round(float(row["Open"]), 2),
-                    "high": round(float(row["High"]), 2),
-                    "low": round(float(row["Low"]), 2),
-                    "close": round(float(row["Close"]), 2),
-                    "volume": int(row["Volume"]),
-                })
+                rows.append(
+                    {
+                        "date": idx.strftime("%Y-%m-%d")
+                        if hasattr(idx, "strftime")
+                        else str(idx),
+                        "ticker": ticker,
+                        "open": round(float(row["Open"]), 2),
+                        "high": round(float(row["High"]), 2),
+                        "low": round(float(row["Low"]), 2),
+                        "close": round(float(row["Close"]), 2),
+                        "volume": int(row["Volume"]),
+                    }
+                )
         except (KeyError, TypeError) as e:
             print(f"  Warning: skipping {ticker}: {e}")
 
     path = OUTPUT_DIR / "daily_prices.csv"
     with open(path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["date", "ticker", "open", "high", "low", "close", "volume"])
+        writer = csv.DictWriter(
+            f, fieldnames=["date", "ticker", "open", "high", "low", "close", "volume"]
+        )
         writer.writeheader()
         writer.writerows(rows)
     print(f"  daily_prices.csv: {len(rows)} rows")
@@ -123,11 +126,13 @@ def download_prices() -> None:
 def write_ticker_metadata() -> None:
     rows = []
     for ticker, meta in TICKERS.items():
-        rows.append({
-            "ticker": ticker,
-            "sector": meta["sector"],
-            "industry": meta["industry"],
-        })
+        rows.append(
+            {
+                "ticker": ticker,
+                "sector": meta["sector"],
+                "industry": meta["industry"],
+            }
+        )
 
     path = OUTPUT_DIR / "tickers.csv"
     with open(path, "w", newline="") as f:

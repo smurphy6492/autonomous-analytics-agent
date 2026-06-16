@@ -277,9 +277,7 @@ class OrchestratorAgent:
                 gaps.append(cleaned)
 
         if gaps:
-            logger.warning(
-                "Coverage validation found %d gap(s): %s", len(gaps), gaps
-            )
+            logger.warning("Coverage validation found %d gap(s): %s", len(gaps), gaps)
         else:
             logger.info("Coverage validation: PASS (no gaps parsed)")
 

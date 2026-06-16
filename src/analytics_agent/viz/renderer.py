@@ -20,16 +20,21 @@ logger = logging.getLogger(__name__)
 # this format and fall back to row indices, producing wrong charts. We decode
 # bdata back to plain JSON arrays before the HTML leaves this module.
 _DTYPE_FMT: dict[str, tuple[str, int]] = {
-    "f4": ("f", 4), "f8": ("d", 8),
-    "i1": ("b", 1), "i2": ("h", 2), "i4": ("i", 4), "i8": ("q", 8),
-    "u1": ("B", 1), "u2": ("H", 2), "u4": ("I", 4), "u8": ("Q", 8),
+    "f4": ("f", 4),
+    "f8": ("d", 8),
+    "i1": ("b", 1),
+    "i2": ("h", 2),
+    "i4": ("i", 4),
+    "i8": ("q", 8),
+    "u1": ("B", 1),
+    "u2": ("H", 2),
+    "u4": ("I", 4),
+    "u8": ("Q", 8),
     "b1": ("?", 1),
 }
 # Matches {"dtype":"f8","bdata":"..."} where the base64 value may contain
 # forward-slash either as "/" or as its JSON-escaped form "\u002f".
-_BDATA_RE = re.compile(
-    r'\{"dtype":"([^"]+)","bdata":"((?:[A-Za-z0-9+/=]|\\u002f)*)"\}'
-)
+_BDATA_RE = re.compile(r'\{"dtype":"([^"]+)","bdata":"((?:[A-Za-z0-9+/=]|\\u002f)*)"\}')
 
 
 def _decode_bdata(html: str) -> str:
@@ -40,7 +45,7 @@ def _decode_bdata(html: str) -> str:
         b64 = m.group(2).replace("\\u002f", "/")  # unescape HTML-encoded /
         fmt = _DTYPE_FMT.get(dtype)
         if fmt is None:
-            return m.group(0)  # Unknown dtype — leave as-is
+            return str(m.group(0))  # Unknown dtype — leave as-is
         char, size = fmt
         raw = base64.b64decode(b64)
         n = len(raw) // size
@@ -48,7 +53,9 @@ def _decode_bdata(html: str) -> str:
         # Use compact JSON representation
         return "[" + ",".join(str(v) for v in values) + "]"
 
-    return _BDATA_RE.sub(_replace, html)
+    result: str = _BDATA_RE.sub(_replace, html)
+    return result
+
 
 # Colour sequence names accepted by Plotly Express.
 _VALID_COLOR_SEQUENCES = {
@@ -166,9 +173,10 @@ def _render_bar(
     *,
     horizontal: bool,
 ) -> go.Figure:
-    # For horizontal bars the ChartSpec convention is x_column=numeric (bar length),
-    # y_column=categorical (bar position) — matching Plotly's orientation="h" expectation.
-    # No swap needed; orientation="h" tells Plotly to draw bars left-to-right.
+    # For horizontal bars the ChartSpec convention is x_column=numeric
+    # (bar length), y_column=categorical (bar position) — matching Plotly's
+    # orientation="h" expectation. No swap needed; orientation="h" tells
+    # Plotly to draw bars left-to-right.
     kwargs: dict[str, Any] = {
         "data_frame": data,
         "x": spec.x_column,
@@ -339,7 +347,10 @@ def _apply_layout(fig: go.Figure, spec: ChartSpec) -> None:
 
     # For bar charts with color grouping (stacked/grouped), sort the category
     # axis by total value descending so the largest bars appear first.
-    if spec.chart_type in (ChartType.BAR, ChartType.HORIZONTAL_BAR) and spec.color_column:
+    if (
+        spec.chart_type in (ChartType.BAR, ChartType.HORIZONTAL_BAR)
+        and spec.color_column
+    ):
         if spec.chart_type == ChartType.HORIZONTAL_BAR:
             layout_updates["yaxis_categoryorder"] = "total ascending"
         else:
