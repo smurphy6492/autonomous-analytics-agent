@@ -1,15 +1,22 @@
+# Pre-commit hooks for autonomous-analytics-agent.
+#
+# Ruff runs in pre-commit's own isolated, pinned environment, so the local gate
+# is fast and deterministic on every machine. The rev is kept in step with the
+# ruff used by CI / `make check`.
+#
+# Mypy is intentionally NOT a pre-commit hook. Type-checking this repo needs the
+# project's runtime deps (pydantic, pandas, plotly, anthropic) installed in the
+# checker's environment; an isolated mirrors-mypy hook only has its
+# additional_dependencies, so it follows imports into src with a different mypy
+# version and stub set than CI and disagrees with it (flagging untyped pytest
+# decorators in tests, plugin arg-types, and stub-only "unused ignore" errors
+# that CI never sees). Mypy and tests are enforced in CI via `make check`, which
+# installs exactly the project deps and runs `mypy src/`. Run it locally the
+# same way: `make type-check` / `make check`.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.0
+    rev: v0.15.16
     hooks:
       - id: ruff
         args: [--fix]
       - id: ruff-format
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.10.0
-    hooks:
-      - id: mypy
-        additional_dependencies:
-          - pydantic>=2.9.0
-          - pandas-stubs
-          - types-jinja2

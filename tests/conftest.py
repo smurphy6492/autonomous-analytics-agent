@@ -1,5 +1,6 @@
 """Shared pytest fixtures for the analytics agent test suite."""
 
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -8,6 +9,33 @@ from dotenv import load_dotenv
 
 # Load .env so ANTHROPIC_API_KEY is available for integration tests.
 load_dotenv()
+
+
+@pytest.fixture
+def make_stub_base() -> Callable[[str], object]:
+    """Factory that builds a real BaseAgent whose one LLM reply is ``raw``.
+
+    Most agent unit tests mock ``BaseAgent`` with ``MagicMock(spec=BaseAgent)``,
+    which means ``call_structured``'s real validation never runs. To prove a
+    contract is *enforced* (not just declared), these tests need the genuine
+    parse-and-validate path: this factory returns a BaseAgent backed by a stub
+    Anthropic client that always returns ``raw`` as the response text, so a
+    contract-violating payload is rejected by ``model_validate`` exactly as it
+    would be in production.
+    """
+    from analytics_agent.agents.base import BaseAgent
+
+    def _make(raw: str) -> BaseAgent:
+        client = MagicMock()
+        block = MagicMock()
+        block.type = "text"  # base._api_call rejects non-"text" blocks
+        block.text = raw
+        message = MagicMock()
+        message.content = [block]
+        client.messages.create.return_value = message
+        return BaseAgent(client=client, cache_dir=None)
+
+    return _make
 
 
 @pytest.fixture

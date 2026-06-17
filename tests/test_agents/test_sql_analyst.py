@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from analytics_agent.agents.base import AgentError, BaseAgent
 from analytics_agent.agents.sql_analyst import (
@@ -507,6 +510,58 @@ class TestExecuteQueryAgentError:
             SQLRequest(planned_query=planned_query, data_profile=profile)
         )
         assert result.query_id == "revenue_by_category"
+
+
+# ---------------------------------------------------------------------------
+# Contract enforcement — malformed SQL output must be rejected, not trusted
+# ---------------------------------------------------------------------------
+
+
+class TestContractEnforcement:
+    """The SQL agent must reject LLM output that breaks the _SQLOutput contract.
+
+    _generate_sql runs the real call_structured, so a payload missing the
+    required ``sql`` field raises an AgentError whose __cause__ is the
+    ValidationError. execute_query wraps that path: a malformed response can
+    never masquerade as a successful query — it degrades to success=False.
+    """
+
+    def test_generate_sql_rejects_missing_sql_field(
+        self,
+        planned_query: PlannedQuery,
+        profile: DataProfile,
+        engine: DuckDBEngine,
+        make_stub_base: Callable[[str], BaseAgent],
+    ) -> None:
+        # _SQLOutput requires `sql`; an empty object must be rejected.
+        agent = SQLAnalystAgent(base=make_stub_base(json.dumps({})), engine=engine)
+
+        with pytest.raises(AgentError) as exc_info:
+            agent._generate_sql(
+                SQLRequest(planned_query=planned_query, data_profile=profile)
+            )
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
+        assert "sql" in str(exc_info.value.__cause__)
+
+    def test_execute_query_degrades_on_malformed_output(
+        self,
+        planned_query: PlannedQuery,
+        profile: DataProfile,
+        engine: DuckDBEngine,
+        make_stub_base: Callable[[str], BaseAgent],
+    ) -> None:
+        # A contract-violating response must surface as a failed result, never
+        # as a silent success carrying bad data.
+        agent = SQLAnalystAgent(base=make_stub_base(json.dumps({})), engine=engine)
+
+        result = agent.execute_query(
+            SQLRequest(planned_query=planned_query, data_profile=profile)
+        )
+
+        assert result.success is False
+        assert result.query_id == "revenue_by_category"
+        assert result.error
 
 
 # ---------------------------------------------------------------------------

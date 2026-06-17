@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from analytics_agent.agents.viz_agent import VizAgent
 from analytics_agent.models.chart_spec import ChartSpec, ChartType
@@ -417,3 +418,79 @@ class TestVizAgentFailure:
         )
         result = agent.render(spec, _time_series_data())
         assert result.chart_id == "known_id"
+
+
+# ---------------------------------------------------------------------------
+# VizAgent / renderer — malformed spec enforcement
+# ---------------------------------------------------------------------------
+
+
+class TestMalformedSpecEnforcement:
+    """A malformed chart spec must fail loudly or be rejected — never a silent
+    broken chart.
+
+    Two defences:
+    1. The contract rejects an invalid chart_type at construction (the enum),
+       so a bad type can never reach the renderer.
+    2. Even if validation were bypassed, the renderer raises RenderError for an
+       unsupported chart type and VizAgent turns it into success=False.
+    """
+
+    def test_invalid_chart_type_rejected_at_contract(self) -> None:
+        # chart_type is a closed ChartType enum; an unknown value cannot be
+        # constructed — the contract blocks it before any rendering happens.
+        with pytest.raises(ValidationError):
+            ChartSpec(
+                chart_id="bad",
+                chart_type="bubble_3d",  # not a ChartType member
+                title="T",
+                data_source="q",
+                x_column="month",
+                y_column="total",
+            )
+
+    def test_unsupported_chart_type_handled_not_silent(self) -> None:
+        # Bypass validation via model_construct to simulate an unsupported type
+        # reaching the renderer. It must degrade to a failed chart, not raise
+        # out of the agent or emit a broken chart.
+        spec = ChartSpec.model_construct(
+            chart_id="rogue",
+            chart_type="bubble_3d",
+            title="Rogue Chart",
+            data_source="q",
+            x_column="month",
+            y_column="total",
+        )
+        result = VizAgent().render(spec, _time_series_data())
+        assert result.success is False
+        assert result.html == ""
+        assert result.error
+
+    def test_renderer_raises_on_unsupported_chart_type(self) -> None:
+        # The renderer's own contract: an unsupported type raises RenderError
+        # (the branch VizAgent catches).
+        spec = ChartSpec.model_construct(
+            chart_id="rogue",
+            chart_type="bubble_3d",
+            title="Rogue Chart",
+            data_source="q",
+            x_column="month",
+            y_column="total",
+        )
+        with pytest.raises(RenderError, match="[Uu]nsupported chart type"):
+            render_chart(spec, _time_series_data())
+
+    def test_missing_column_spec_reports_the_column(self) -> None:
+        # A spec referencing a column absent from the data yields success=False
+        # and names the offending column, so the failure is diagnosable.
+        spec = ChartSpec(
+            chart_id="missing_col",
+            chart_type=ChartType.LINE,
+            title="T",
+            data_source="q",
+            x_column="nonexistent_column",
+            y_column="total",
+        )
+        result = VizAgent().render(spec, _time_series_data())
+        assert result.success is False
+        assert "nonexistent_column" in (result.error or "")

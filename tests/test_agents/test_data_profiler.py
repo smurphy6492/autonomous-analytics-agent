@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
-from analytics_agent.agents.base import BaseAgent
+from analytics_agent.agents.base import AgentError, BaseAgent
 from analytics_agent.agents.data_profiler import (
     DataProfilerAgent,
     _build_profile_prompt,
@@ -393,6 +396,84 @@ class TestProfilerProfile:
         assert "sample" in user_prompt
         assert "row_count" not in user_prompt  # row_count is in the raw dict key
         assert "rows" in user_prompt  # formatted as "N rows"
+
+
+# ---------------------------------------------------------------------------
+# Contract enforcement — the agent must reject bad LLM output, not pass it on
+# ---------------------------------------------------------------------------
+
+
+class TestContractEnforcement:
+    """A constraint-violating LLM payload must be rejected, not returned.
+
+    The other profiler tests mock ``BaseAgent``, so they never exercise the
+    real ``call_structured`` validation. These use a stub-backed real BaseAgent
+    so the bad payload flows through ``model_validate``. ``call_structured``
+    wraps the resulting ``ValidationError`` (a ``ValueError`` subclass) in an
+    ``AgentError`` whose ``__cause__`` is the original ``ValidationError`` —
+    that is the contract firing, not the agent silently passing bad data on.
+    """
+
+    def test_out_of_range_null_pct_rejected(
+        self,
+        engine: DuckDBEngine,
+        sample_csv: Path,
+        make_stub_base: Callable[[str], BaseAgent],
+    ) -> None:
+        # null_pct=1.5 violates ColumnProfile's null_pct <= 1.0 bound.
+        bad_payload = json.dumps(
+            {
+                "tables": [
+                    {
+                        "name": "sample",
+                        "row_count": 3,
+                        "columns": [
+                            {
+                                "name": "revenue",
+                                "dtype": "DOUBLE",
+                                "null_count": 0,
+                                "null_pct": 1.5,
+                                "unique_count": 3,
+                                "cardinality": "low",
+                            }
+                        ],
+                    }
+                ],
+                "relationships": [],
+                "suggested_grain": "order_id",
+                "data_quality_issues": [],
+            }
+        )
+        profiler = DataProfilerAgent(base=make_stub_base(bad_payload), engine=engine)
+
+        with pytest.raises(AgentError) as exc_info:
+            profiler.profile(ProfileRequest(data_paths=[str(sample_csv)]))
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
+        assert "null_pct" in str(exc_info.value.__cause__)
+
+    def test_extra_field_rejected(
+        self,
+        engine: DuckDBEngine,
+        sample_csv: Path,
+        make_stub_base: Callable[[str], BaseAgent],
+    ) -> None:
+        # extra="forbid" — a hallucinated top-level field must be rejected.
+        bad_payload = json.dumps(
+            {
+                "tables": [{"name": "sample", "row_count": 3, "columns": []}],
+                "relationships": [],
+                "suggested_grain": "order_id",
+                "data_quality_issues": [],
+                "hallucinated_field": "should not be accepted",
+            }
+        )
+        profiler = DataProfilerAgent(base=make_stub_base(bad_payload), engine=engine)
+
+        with pytest.raises(AgentError) as exc_info:
+            profiler.profile(ProfileRequest(data_paths=[str(sample_csv)]))
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
 
 
 # ---------------------------------------------------------------------------
