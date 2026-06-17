@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from analytics_agent.agents.base import AgentError, BaseAgent
 from analytics_agent.agents.orchestrator import (
@@ -609,3 +612,108 @@ class TestOrchestratorIntegration:
         )
         assert isinstance(synthesis, AnalysisSynthesis)
         assert len(synthesis.executive_summary) > 20
+
+
+# ---------------------------------------------------------------------------
+# Contract enforcement — the orchestrator must reject bad LLM output
+# ---------------------------------------------------------------------------
+
+
+class TestContractEnforcement:
+    """plan_queries and synthesize must reject contract-violating LLM output.
+
+    These use a stub-backed real BaseAgent (not MagicMock(spec=BaseAgent)) so
+    the payload runs through the genuine model_validate. call_structured wraps
+    the ValidationError in an AgentError whose __cause__ is the ValidationError.
+    """
+
+    def test_plan_with_too_many_queries_rejected(
+        self,
+        profile: DataProfile,
+        make_stub_base: Callable[[str], BaseAgent],
+    ) -> None:
+        # QueryPlan.queries has max_length=4; five queries must be rejected.
+        bad_payload = json.dumps(
+            {
+                "analysis_approach": "Too many queries.",
+                "queries": [
+                    {
+                        "query_id": f"q{i}",
+                        "purpose": "p",
+                        "required_tables": ["orders"],
+                        "required_columns": ["revenue"],
+                        "aggregation_grain": "monthly",
+                        "expected_output_type": "summary_table",
+                    }
+                    for i in range(5)
+                ],
+            }
+        )
+        orchestrator = OrchestratorAgent(base=make_stub_base(bad_payload))
+        request = QueryPlanRequest(
+            business_question="What is the revenue trend?",
+            data_profile=profile,
+        )
+
+        with pytest.raises(AgentError) as exc_info:
+            orchestrator.plan_queries(request)
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
+        assert "queries" in str(exc_info.value.__cause__)
+
+    def test_plan_with_invalid_output_type_rejected(
+        self,
+        profile: DataProfile,
+        make_stub_base: Callable[[str], BaseAgent],
+    ) -> None:
+        # expected_output_type is a Literal; "histogram" is not a member.
+        bad_payload = json.dumps(
+            {
+                "analysis_approach": "Bad output type.",
+                "queries": [
+                    {
+                        "query_id": "q1",
+                        "purpose": "p",
+                        "required_tables": ["orders"],
+                        "required_columns": ["revenue"],
+                        "aggregation_grain": "monthly",
+                        "expected_output_type": "histogram",
+                    }
+                ],
+            }
+        )
+        orchestrator = OrchestratorAgent(base=make_stub_base(bad_payload))
+        request = QueryPlanRequest(business_question="Revenue?", data_profile=profile)
+
+        with pytest.raises(AgentError) as exc_info:
+            orchestrator.plan_queries(request)
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
+
+    def test_synthesis_with_extra_field_rejected(
+        self,
+        query_plan: QueryPlan,
+        query_results: dict[str, QueryResult],
+        make_stub_base: Callable[[str], BaseAgent],
+    ) -> None:
+        # extra="forbid" — an unknown field on AnalysisSynthesis is rejected.
+        bad_payload = json.dumps(
+            {
+                "executive_summary": "Revenue grew.",
+                "key_metrics": [],
+                "chart_specs": [],
+                "data_tables": [],
+                "made_up_field": "should not be accepted",
+            }
+        )
+        orchestrator = OrchestratorAgent(base=make_stub_base(bad_payload))
+        request = SynthesisRequest(
+            business_question="What drives revenue?",
+            query_plan=query_plan,
+            query_results=query_results,
+        )
+
+        with pytest.raises(AgentError) as exc_info:
+            orchestrator.synthesize(request)
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
