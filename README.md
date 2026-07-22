@@ -308,6 +308,21 @@ Deterministic validators (`analytics_agent/pipeline/validator.py`) run after eve
 
 ---
 
+## Limitations
+
+This is a portfolio demonstration of an agentic analytics pipeline, not a production system. Be clear-eyed about what it does not do:
+
+- **No correctness guarantee on unseen questions.** The golden eval measures accuracy on a small fixed set of questions. A new question runs LLM-generated SQL that nothing has verified; the runtime guards catch common failure shapes, not all wrong answers.
+- **Silent-wrong-SQL beyond the fan-out signature.** The fan-out guard catches a join that inflates the row count. A join that double-counts at the same row grain, or a subtly wrong filter or aggregation, produces a plausible number that passes every guard.
+- **Single-shot, no human in the loop.** The pipeline runs question to report with no analyst review. It is built to surface problems (validators, disclosed data window, honest metrics), not to be trusted unattended on decisions that matter.
+- **Cost and latency.** Each report is several LLM calls (plan, SQL per query, synthesis, coverage, sanity). Expect tens of seconds and real token cost per report; it is not built for high throughput.
+- **Not validated on hard analysis.** It handles aggregation and breakdown questions on tabular data. Multi-table causal questions, statistical inference, and anything requiring a modelling decision are out of scope and unvalidated.
+- **Bring your own trust in the data.** Profiling is deterministic but shallow (types, cardinality, nulls, name-matched relationships). It does not detect semantic data-quality problems or verify that the source data is correct.
+
+Where would I not deploy this as-is? Anywhere a wrong number has a cost — financial reporting, anything customer-facing, or as an unattended replacement for an analyst. It is a force multiplier for exploration with a human reading the output, not an oracle.
+
+---
+
 ## Example Output
 
 The pipeline produces a self-contained HTML report with:
