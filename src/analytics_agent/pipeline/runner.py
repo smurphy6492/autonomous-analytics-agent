@@ -30,7 +30,9 @@ from analytics_agent.models.report import (
 from analytics_agent.pipeline.context import PipelineContext
 from analytics_agent.pipeline.validator import (
     validate_chart_html,
+    validate_join_fanout,
     validate_query_result,
+    validate_summary_numbers,
 )
 from analytics_agent.report.builder import ReportBuilder
 
@@ -125,6 +127,7 @@ class PipelineRunner:
         self._step_synthesise(ctx)
         self._step_validate_coverage(ctx)
         self._step_validate_metric_sanity(ctx)
+        self._step_validate_summary_numbers(ctx)
         self._step_render_charts(ctx)
 
         ctx.end_time = datetime.now(UTC)
@@ -208,6 +211,10 @@ class PipelineRunner:
                 )
                 for warning in validate_query_result(result):
                     logger.warning("[QA] %s", warning)
+                if ctx.profile is not None:
+                    for warning in validate_join_fanout(result, planned, ctx.profile):
+                        logger.warning("[QA] %s", warning)
+                        ctx.record_error(warning)
             else:
                 msg = (
                     f"Query '{planned.query_id}' failed after "
@@ -318,6 +325,23 @@ class PipelineRunner:
 
         for issue in issues:
             logger.warning("[Metric sanity] %s", issue)
+
+    def _step_validate_summary_numbers(self, ctx: PipelineContext) -> None:
+        """Step 4d — Check every headline figure in the summary traces to data.
+
+        Deterministic, no LLM call. Catches a synthesized summary that quotes a
+        number no query result supports (a fabricated or mis-transcribed figure).
+        Warnings are recorded on the context so they surface in the report.
+        """
+        if ctx.synthesis is None:
+            return
+
+        warnings = validate_summary_numbers(
+            ctx.synthesis.executive_summary, ctx.query_results
+        )
+        for warning in warnings:
+            logger.warning("[Summary numbers] %s", warning)
+            ctx.record_error(warning)
 
     def _step_render_charts(self, ctx: PipelineContext) -> None:
         """Step 5 — Render Plotly charts from chart specs."""

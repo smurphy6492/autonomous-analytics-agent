@@ -1,0 +1,13 @@
+order_id,order_date,category,revenue,customer_state,order_status
+1,2023-01-05,electronics,500.00,CA,delivered
+2,2023-01-12,furniture,600.00,NY,delivered
+3,2023-01-20,clothing,250.00,TX,delivered
+4,2023-02-03,electronics,300.00,CA,delivered
+5,2023-02-14,books,80.00,FL,delivered
+6,2023-02-25,furniture,100.00,NY,delivered
+7,2023-03-08,electronics,200.00,TX,delivered
+8,2023-03-17,clothing,150.00,CA,delivered
+9,2023-03-29,books,120.00,FL,delivered
+10,2023-04-06,electronics,400.00,NY,delivered
+11,2023-04-19,furniture,300.00,TX,delivered
+12,2023-04-30,clothing,100.00,CA,delivered

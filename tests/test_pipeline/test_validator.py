@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 from analytics_agent.models.chart_spec import ChartSpec, ChartType
-from analytics_agent.models.query_plan import QueryResult
+from analytics_agent.models.profile import (
+    ColumnProfile,
+    DataProfile,
+    TableProfile,
+)
+from analytics_agent.models.query_plan import PlannedQuery, QueryResult
 from analytics_agent.pipeline.validator import (
     validate_chart_html,
+    validate_join_fanout,
     validate_query_result,
+    validate_summary_numbers,
 )
 
 # ------------------------------------------------------------------
@@ -215,3 +222,132 @@ class TestValidateChartHtml:
         spec = _make_spec()
         warnings = validate_chart_html(html, spec)
         assert warnings == []
+
+
+# ------------------------------------------------------------------
+# validate_join_fanout
+# ------------------------------------------------------------------
+
+
+def _make_profile(row_counts: dict[str, int]) -> DataProfile:
+    """Build a minimal DataProfile with the given table row counts."""
+    tables = [
+        TableProfile(
+            name=name,
+            row_count=count,
+            columns=[
+                ColumnProfile(
+                    name="id",
+                    dtype="int64",
+                    null_count=0,
+                    null_pct=0.0,
+                    unique_count=count,
+                    cardinality="high",
+                )
+            ],
+        )
+        for name, count in row_counts.items()
+    ]
+    return DataProfile(tables=tables, suggested_grain="id")
+
+
+def _make_planned(tables: list[str]) -> PlannedQuery:
+    return PlannedQuery(
+        query_id="breakdown",
+        purpose="revenue by category",
+        required_tables=tables,
+        required_columns=["category", "revenue"],
+        aggregation_grain="by_category",
+        expected_output_type="breakdown",
+    )
+
+
+class TestValidateJoinFanout:
+    def test_single_table_never_flags(self) -> None:
+        # Even a huge result from one table cannot be join fan-out.
+        result = _make_result(query_id="breakdown", row_count=999999)
+        planned = _make_planned(["orders"])
+        profile = _make_profile({"orders": 100})
+        assert validate_join_fanout(result, planned, profile) == []
+
+    def test_grouped_result_within_source_size_no_warning(self) -> None:
+        # 8 category rows from a join of tables with 100k / 32k rows: fine.
+        result = _make_result(query_id="breakdown", row_count=8)
+        planned = _make_planned(["order_items", "orders"])
+        profile = _make_profile({"order_items": 112650, "orders": 99441})
+        assert validate_join_fanout(result, planned, profile) == []
+
+    def test_result_larger_than_largest_source_warns(self) -> None:
+        # A grouped query returning more rows than any base table = fan-out.
+        result = _make_result(query_id="breakdown", row_count=250000)
+        planned = _make_planned(["order_items", "payments"])
+        profile = _make_profile({"order_items": 112650, "payments": 103886})
+        warnings = validate_join_fanout(result, planned, profile)
+        assert any("fanned" in w and "breakdown" in w for w in warnings)
+
+    def test_failed_result_skipped(self) -> None:
+        result = _make_result(query_id="breakdown", row_count=0, success=False)
+        planned = _make_planned(["a", "b"])
+        profile = _make_profile({"a": 10, "b": 10})
+        assert validate_join_fanout(result, planned, profile) == []
+
+    def test_missing_profile_tables_no_crash(self) -> None:
+        result = _make_result(query_id="breakdown", row_count=500)
+        planned = _make_planned(["unknown1", "unknown2"])
+        profile = _make_profile({"other": 100})
+        assert validate_join_fanout(result, planned, profile) == []
+
+
+# ------------------------------------------------------------------
+# validate_summary_numbers
+# ------------------------------------------------------------------
+
+
+def _results_with_values(values: list[dict]) -> dict[str, QueryResult]:
+    return {
+        "q1": QueryResult(
+            query_id="q1",
+            sql="SELECT 1",
+            success=True,
+            data=values,
+            row_count=len(values),
+            attempts=1,
+        )
+    }
+
+
+class TestValidateSummaryNumbers:
+    def test_supported_currency_figure_no_warning(self) -> None:
+        # "$1.23M" must match a raw 1,233,131.72 within tolerance.
+        results = _results_with_values(
+            [{"category": "health_beauty", "revenue": 1233131.72}]
+        )
+        summary = "Health & Beauty leads with $1.23M in revenue."
+        assert validate_summary_numbers(summary, results) == []
+
+    def test_supported_percentage_no_warning(self) -> None:
+        results = _results_with_values([{"share": 11.69}, {"share": 8.53}])
+        summary = "Share rose from 8.53% to 11.69% over the period."
+        assert validate_summary_numbers(summary, results) == []
+
+    def test_fabricated_figure_warns(self) -> None:
+        results = _results_with_values([{"revenue": 1233131.72}])
+        summary = "Revenue reached $9.99M, an all-time high."
+        warnings = validate_summary_numbers(summary, results)
+        assert any("9.99M" in w for w in warnings)
+
+    def test_small_structural_integers_ignored(self) -> None:
+        # "top 5" and "12 months" are language, not data — must not warn.
+        results = _results_with_values([{"revenue": 1233131.72}])
+        summary = "The top 5 categories over the past 12 months drove growth."
+        assert validate_summary_numbers(summary, results) == []
+
+    def test_large_plain_number_checked(self) -> None:
+        # "9,465 items" is a headline figure and IS supported.
+        results = _results_with_values([{"items": 9465, "revenue": 1233131.72}])
+        summary = "Health & Beauty sold 9,465 items."
+        assert validate_summary_numbers(summary, results) == []
+
+    def test_empty_summary_no_warning(self) -> None:
+        results = _results_with_values([{"revenue": 100.0}])
+        assert validate_summary_numbers("", results) == []

@@ -51,6 +51,7 @@ mypy_path = "src"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # so tests can import the repo-root `eval` package
 addopts = "--cov=src --cov-report=term-missing"
 markers = [
     "integration: marks tests as integration tests (require API key)",
