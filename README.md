@@ -242,11 +242,14 @@ The same `make check` runs in CI on every push and pull request (`.github/workfl
 ### Run checks
 
 ```bash
-make check          # lint + type-check + tests
-make lint           # ruff check + format
+make check          # lint + type-check + tests (non-mutating — this is what CI runs)
+make lint           # ruff check + ruff format --check (reports, does not modify)
+make fix            # ruff check --fix + ruff format (modifies files; local use only)
 make type-check     # mypy
 make test           # pytest with coverage
 ```
+
+CI runs `make check`, which is strictly non-mutating: `ruff check .` and `ruff format --check .` report problems and fail rather than auto-fixing. Auto-fixing in CI would let a broken change pass by silently repairing it; `make fix` is the local-only mutating variant.
 
 ### Configuration (`.env`)
 
@@ -273,6 +276,35 @@ pytest -m "not integration"
 ```bash
 pytest -m integration
 ```
+
+---
+
+## Correctness and reproducibility
+
+An LLM-to-SQL-to-summary pipeline can produce output that looks right and is wrong. Two things guard against that, and both are runnable.
+
+### Golden-answer eval
+
+`eval/` holds business questions paired with a reference query and expected numbers on a small committed dataset (`eval/golden_dataset.csv`). The reference answers are authored independently of the agent and verified against the data — `tests/test_eval` runs each reference query and asserts it reproduces the expected numbers. The agent is graded on how many of those numbers it reproduces, so "did it work" becomes an accuracy number instead of a vibe.
+
+```bash
+python -m eval.run_eval          # runs the real agent over the golden cases (needs API key)
+pytest tests/test_eval           # CI-safe: proves the reference numbers reproduce and the scorer is correct
+```
+
+The reference numbers are themselves reproducible — `tests/test_eval` runs each reference query against the committed dataset and asserts it produces the expected values, so the ground truth is verified, not trusted.
+
+### Verifying the demo figures
+
+The headline figures in the portfolio demo (Health & Beauty at $1.23M, a $5.27M top-5 total) are recomputed from the raw Kaggle Olist data with an explicit reference query:
+
+```bash
+python scripts/verify_demo_numbers.py    # PASS/FAIL against the published figures (needs the Olist data)
+```
+
+### What the runtime validators do and don't catch
+
+Deterministic validators (`analytics_agent/pipeline/validator.py`) run after every query and flag specific failure signatures: zero rows, sequential-index axes, undecoded Plotly `bdata`, a join that fans out and inflates aggregates, and a summary figure that no query result supports. These are heuristics, not a correctness proof — a wrong-but-plausible aggregation can still pass a validator. The golden eval is the authoritative correctness check; the validators are the fast smoke alarms. The self-correcting SQL retry loop, likewise, only reacts to queries that *error* — it does not catch SQL that runs cleanly but computes the wrong thing, which is what the fan-out guard and the eval are for.
 
 ---
 

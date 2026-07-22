@@ -1,11 +1,21 @@
-.PHONY: install lint type-check test check clean
+.PHONY: install lint format fix type-check test check clean
 
 install:
 	pip install -e ".[dev]"
 	pre-commit install
 
+# Non-mutating: reports problems and fails. This is what CI and `check` run.
 lint:
-	ruff check . --fix && ruff format .
+	ruff check .
+	ruff format --check .
+
+# Mutating: fixes what it can. For local use before committing — never in CI,
+# where auto-fixing would let a broken change pass by silently repairing it.
+fix:
+	ruff check . --fix
+	ruff format .
+
+format: fix
 
 type-check:
 	mypy src/
