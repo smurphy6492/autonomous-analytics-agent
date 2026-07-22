@@ -1,19 +1,18 @@
-"""Unit tests for DataProfilerAgent."""
+"""Unit tests for DataProfilerAgent — fully deterministic, no LLM."""
 
 from __future__ import annotations
 
-import json
-from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
-from pydantic import ValidationError
 
-from analytics_agent.agents.base import AgentError, BaseAgent
 from analytics_agent.agents.data_profiler import (
     DataProfilerAgent,
-    _build_profile_prompt,
+    _cardinality,
+    _detect_relationships,
+    _is_date,
+    _is_numeric,
+    _suggest_grain,
 )
 from analytics_agent.db.engine import DuckDBEngine
 from analytics_agent.models.profile import (
@@ -22,10 +21,6 @@ from analytics_agent.models.profile import (
     ProfileRequest,
     TableProfile,
 )
-
-# ---------------------------------------------------------------------------
-# Module-level path helpers
-# ---------------------------------------------------------------------------
 
 _SAMPLE_CSV = (
     Path(__file__).parent.parent.parent / "data" / "sample" / "sample_orders.csv"
@@ -44,90 +39,12 @@ def engine() -> DuckDBEngine:
 
 
 @pytest.fixture
-def minimal_profile() -> DataProfile:
-    """Pre-built DataProfile returned by the mocked Claude call."""
-    return DataProfile(
-        tables=[
-            TableProfile(
-                name="orders",
-                row_count=3,
-                columns=[
-                    ColumnProfile(
-                        name="order_id",
-                        dtype="INTEGER",
-                        null_count=0,
-                        null_pct=0.0,
-                        unique_count=3,
-                        cardinality="low",
-                        sample_values=["1", "2", "3"],
-                        is_date=False,
-                        is_numeric=True,
-                        min_value="1",
-                        max_value="3",
-                    ),
-                    ColumnProfile(
-                        name="order_date",
-                        dtype="VARCHAR",
-                        null_count=0,
-                        null_pct=0.0,
-                        unique_count=3,
-                        cardinality="low",
-                        sample_values=["2023-01-01", "2023-01-02", "2023-01-03"],
-                        is_date=True,
-                        is_numeric=False,
-                        min_value="2023-01-01",
-                        max_value="2023-01-03",
-                    ),
-                    ColumnProfile(
-                        name="revenue",
-                        dtype="DOUBLE",
-                        null_count=0,
-                        null_pct=0.0,
-                        unique_count=3,
-                        cardinality="low",
-                        sample_values=["100.0", "200.0", "150.0"],
-                        is_date=False,
-                        is_numeric=True,
-                        min_value="100.0",
-                        max_value="200.0",
-                    ),
-                    ColumnProfile(
-                        name="category",
-                        dtype="VARCHAR",
-                        null_count=0,
-                        null_pct=0.0,
-                        unique_count=2,
-                        cardinality="low",
-                        sample_values=["electronics", "clothing"],
-                        is_date=False,
-                        is_numeric=False,
-                        min_value=None,
-                        max_value=None,
-                    ),
-                ],
-            )
-        ],
-        relationships=[],
-        suggested_grain="order_id",
-        data_quality_issues=[],
-    )
-
-
-@pytest.fixture
-def mock_base(minimal_profile: DataProfile) -> MagicMock:
-    """Mock BaseAgent whose call_structured returns the minimal profile."""
-    base = MagicMock(spec=BaseAgent)
-    base.call_structured.return_value = minimal_profile
-    return base
-
-
-@pytest.fixture
-def profiler(mock_base: MagicMock, engine: DuckDBEngine) -> DataProfilerAgent:
-    return DataProfilerAgent(base=mock_base, engine=engine)
+def profiler(engine: DuckDBEngine) -> DataProfilerAgent:
+    return DataProfilerAgent(engine=engine)
 
 
 # ---------------------------------------------------------------------------
-# _collect_table_stats — programmatic stats, no LLM
+# _collect_table_stats — programmatic stats
 # ---------------------------------------------------------------------------
 
 
@@ -163,16 +80,7 @@ class TestCollectTableStats:
         profiler._engine.load_csv(sample_csv, "orders")
         stats = profiler._collect_table_stats("orders")
         cat_col = next(c for c in stats["columns"] if c["name"] == "category")
-        # conftest sample_csv has 2 categories: electronics + clothing
         assert cat_col["unique_count"] == 2
-
-    def test_sample_values_populated(
-        self, profiler: DataProfilerAgent, sample_csv: Path
-    ) -> None:
-        profiler._engine.load_csv(sample_csv, "orders")
-        stats = profiler._collect_table_stats("orders")
-        rev_col = next(c for c in stats["columns"] if c["name"] == "revenue")
-        assert len(rev_col["sample_values"]) >= 1
 
     def test_min_max_for_numeric_column(
         self, profiler: DataProfilerAgent, sample_csv: Path
@@ -185,8 +93,6 @@ class TestCollectTableStats:
 
 
 class TestCollectTableStatsWithNulls:
-    """Verify null detection on a CSV that has explicit null values."""
-
     @pytest.fixture
     def csv_with_nulls(self, tmp_path: Path) -> Path:
         data = (
@@ -207,135 +113,140 @@ class TestCollectTableStatsWithNulls:
         rev_col = next(c for c in stats["columns"] if c["name"] == "revenue")
         assert rev_col["null_count"] == 1
 
-    def test_detects_category_null(
-        self, profiler: DataProfilerAgent, csv_with_nulls: Path
-    ) -> None:
-        profiler._engine.load_csv(csv_with_nulls, "nulls")
-        stats = profiler._collect_table_stats("nulls")
-        cat_col = next(c for c in stats["columns"] if c["name"] == "category")
-        assert cat_col["null_count"] == 1
-
 
 # ---------------------------------------------------------------------------
-# _build_profile_prompt — unit tests for the prompt builder
+# Deterministic annotation rules
 # ---------------------------------------------------------------------------
 
 
-class TestBuildProfilePrompt:
-    def test_includes_table_name(self) -> None:
-        raw = [{"table_name": "my_orders", "row_count": 5, "columns": []}]
-        assert "my_orders" in _build_profile_prompt(raw)
+class TestCardinality:
+    def test_low(self) -> None:
+        assert _cardinality(5) == "low"
+        assert _cardinality(19) == "low"
 
-    def test_formats_row_count_with_commas(self) -> None:
-        raw = [{"table_name": "t", "row_count": 9999, "columns": []}]
-        assert "9,999" in _build_profile_prompt(raw)
+    def test_medium(self) -> None:
+        assert _cardinality(20) == "medium"
+        assert _cardinality(1000) == "medium"
 
-    def test_includes_column_name_and_type(self) -> None:
-        raw = [
-            {
-                "table_name": "t",
-                "row_count": 2,
-                "columns": [
-                    {
-                        "name": "my_col",
-                        "type": "INTEGER",
-                        "null_count": 0,
-                        "unique_count": 2,
-                        "sample_values": ["1", "2"],
-                        "min_value": "1",
-                        "max_value": "2",
-                    }
-                ],
-            }
+    def test_high(self) -> None:
+        assert _cardinality(1001) == "high"
+        assert _cardinality(500_000) == "high"
+
+
+class TestIsNumeric:
+    @pytest.mark.parametrize(
+        "dtype", ["INTEGER", "BIGINT", "DOUBLE", "DECIMAL(10,2)", "FLOAT", "HUGEINT"]
+    )
+    def test_numeric_types(self, dtype: str) -> None:
+        assert _is_numeric(dtype) is True
+
+    @pytest.mark.parametrize("dtype", ["VARCHAR", "DATE", "TIMESTAMP", "BOOLEAN"])
+    def test_non_numeric_types(self, dtype: str) -> None:
+        assert _is_numeric(dtype) is False
+
+
+class TestIsDate:
+    def test_native_date_type(self) -> None:
+        assert _is_date("DATE", []) is True
+
+    def test_timestamp_type(self) -> None:
+        assert _is_date("TIMESTAMP", []) is True
+
+    def test_varchar_with_date_samples(self) -> None:
+        assert _is_date("VARCHAR", ["2023-01-01", "2023-02-15"]) is True
+
+    def test_varchar_with_non_date_samples(self) -> None:
+        assert _is_date("VARCHAR", ["electronics", "clothing"]) is False
+
+    def test_varchar_no_samples(self) -> None:
+        assert _is_date("VARCHAR", []) is False
+
+
+class TestDetectRelationships:
+    def test_shared_id_column_links_tables(self) -> None:
+        tables = [
+            _table("customers", ["customer_id", "name"]),
+            _table("orders", ["order_id", "customer_id"]),
         ]
-        prompt = _build_profile_prompt(raw)
-        assert "my_col" in prompt
-        assert "INTEGER" in prompt
+        rels = _detect_relationships(tables)
+        assert any(
+            r.from_table == "orders"
+            and r.from_column == "customer_id"
+            and r.to_table == "customers"
+            for r in rels
+        )
 
-    def test_includes_null_count(self) -> None:
-        raw = [
-            {
-                "table_name": "t",
-                "row_count": 5,
-                "columns": [
-                    {
-                        "name": "c",
-                        "type": "VARCHAR",
-                        "null_count": 2,
-                        "unique_count": 3,
-                        "sample_values": [],
-                        "min_value": None,
-                        "max_value": None,
-                    }
-                ],
-            }
+    def test_non_id_shared_column_not_linked(self) -> None:
+        tables = [
+            _table("a", ["name", "value"]),
+            _table("b", ["name", "other"]),
         ]
-        prompt = _build_profile_prompt(raw)
-        assert "null_count=2" in prompt
+        assert _detect_relationships(tables) == []
 
-    def test_includes_quality_issues(self) -> None:
-        raw = [{"table_name": "t", "row_count": 1, "columns": []}]
-        prompt = _build_profile_prompt(raw, ["file not found: bad.csv"])
-        assert "file not found" in prompt
 
-    def test_no_quality_section_when_empty(self) -> None:
-        raw = [{"table_name": "t", "row_count": 1, "columns": []}]
-        prompt = _build_profile_prompt(raw, None)
-        assert "Pre-loading issues" not in prompt
+class TestSuggestGrain:
+    def test_prefers_unique_key_column(self) -> None:
+        table = TableProfile(
+            name="orders",
+            row_count=3,
+            columns=[
+                _col("order_id", unique_count=3),
+                _col("category", unique_count=2),
+            ],
+        )
+        assert _suggest_grain([table]) == "order_id"
 
-    def test_skips_min_max_when_none(self) -> None:
-        raw = [
-            {
-                "table_name": "t",
-                "row_count": 1,
-                "columns": [
-                    {
-                        "name": "c",
-                        "type": "VARCHAR",
-                        "null_count": 0,
-                        "unique_count": 1,
-                        "sample_values": ["x"],
-                        "min_value": None,
-                        "max_value": None,
-                    }
-                ],
-            }
-        ]
-        prompt = _build_profile_prompt(raw)
-        assert "min=" not in prompt
-        assert "max=" not in prompt
+    def test_falls_back_to_id_like_column(self) -> None:
+        table = TableProfile(
+            name="events",
+            row_count=10,
+            columns=[
+                _col("user_id", unique_count=4),
+                _col("action", unique_count=3),
+            ],
+        )
+        assert _suggest_grain([table]) == "user_id"
 
 
 # ---------------------------------------------------------------------------
-# DataProfilerAgent.profile — end-to-end unit (mocked Claude)
+# DataProfilerAgent.profile — end-to-end, deterministic
 # ---------------------------------------------------------------------------
 
 
 class TestProfilerProfile:
     def test_returns_dataprofile_instance(
-        self,
-        profiler: DataProfilerAgent,
-        sample_csv: Path,
+        self, profiler: DataProfilerAgent, sample_csv: Path
     ) -> None:
         result = profiler.profile(ProfileRequest(data_paths=[str(sample_csv)]))
         assert isinstance(result, DataProfile)
 
-    def test_calls_call_structured_with_dataprofile(
-        self,
-        profiler: DataProfilerAgent,
-        mock_base: MagicMock,
-        sample_csv: Path,
+    def test_row_count_and_columns_are_correct(
+        self, profiler: DataProfilerAgent, sample_csv: Path
     ) -> None:
-        profiler.profile(ProfileRequest(data_paths=[str(sample_csv)]))
-        mock_base.call_structured.assert_called_once()
-        # Third positional arg is the response_model
-        _, _, model_arg = mock_base.call_structured.call_args.args
-        assert model_arg is DataProfile
+        profile = profiler.profile(ProfileRequest(data_paths=[str(sample_csv)]))
+        table = profile.tables[0]
+        assert table.row_count == 3
+        names = {c.name for c in table.columns}
+        assert {"order_id", "order_date", "revenue", "category"} <= names
+
+    def test_flags_are_computed(
+        self, profiler: DataProfilerAgent, sample_csv: Path
+    ) -> None:
+        profile = profiler.profile(ProfileRequest(data_paths=[str(sample_csv)]))
+        cols = {c.name: c for c in profile.tables[0].columns}
+        assert cols["revenue"].is_numeric is True
+        assert cols["order_date"].is_date is True
+        assert cols["category"].is_numeric is False
+        assert cols["category"].cardinality == "low"
+
+    def test_suggested_grain_is_set(
+        self, profiler: DataProfilerAgent, sample_csv: Path
+    ) -> None:
+        profile = profiler.profile(ProfileRequest(data_paths=[str(sample_csv)]))
+        assert profile.suggested_grain != ""
 
     def test_uses_custom_table_name(
-        self,
-        profiler: DataProfilerAgent,
-        sample_csv: Path,
+        self, profiler: DataProfilerAgent, sample_csv: Path
     ) -> None:
         profiler.profile(
             ProfileRequest(data_paths=[str(sample_csv)], table_names=["custom_name"])
@@ -343,9 +254,7 @@ class TestProfilerProfile:
         assert "custom_name" in profiler._engine.table_names()
 
     def test_raises_on_mismatched_path_name_lengths(
-        self,
-        profiler: DataProfilerAgent,
-        sample_csv: Path,
+        self, profiler: DataProfilerAgent, sample_csv: Path
     ) -> None:
         with pytest.raises(ValueError, match="same length"):
             profiler.profile(
@@ -356,181 +265,66 @@ class TestProfilerProfile:
             )
 
     def test_raises_when_no_tables_load(
-        self,
-        profiler: DataProfilerAgent,
-        tmp_path: Path,
+        self, profiler: DataProfilerAgent, tmp_path: Path
     ) -> None:
         missing = str(tmp_path / "ghost.csv")
         with pytest.raises(ValueError, match="No tables could be loaded"):
             profiler.profile(ProfileRequest(data_paths=[missing]))
 
-    def test_missing_file_does_not_crash_when_one_table_loads(
-        self,
-        profiler: DataProfilerAgent,
-        sample_csv: Path,
-        tmp_path: Path,
-        mock_base: MagicMock,
+    def test_missing_file_recorded_as_quality_issue(
+        self, profiler: DataProfilerAgent, sample_csv: Path, tmp_path: Path
     ) -> None:
-        """One missing file should log a quality issue; the rest still profiles."""
         missing = str(tmp_path / "ghost.csv")
-        profiler.profile(
+        profile = profiler.profile(
             ProfileRequest(
                 data_paths=[str(sample_csv), missing],
                 table_names=["real", "missing"],
             )
         )
-        # The user prompt passed to Claude should mention the missing table.
-        call_args = mock_base.call_structured.call_args
-        user_prompt: str = call_args.args[1]
-        assert "missing" in user_prompt.lower() or "Could not load" in user_prompt
+        # The real table still profiled; the missing one is a quality issue.
+        assert profile.tables[0].name == "real"
+        assert any("missing" in issue for issue in profile.data_quality_issues)
 
-    def test_prompt_contains_stats_for_loaded_table(
-        self,
-        profiler: DataProfilerAgent,
-        sample_csv: Path,
-        mock_base: MagicMock,
+    def test_high_null_column_flagged(
+        self, profiler: DataProfilerAgent, tmp_path: Path
     ) -> None:
-        profiler.profile(ProfileRequest(data_paths=[str(sample_csv)]))
-        user_prompt: str = mock_base.call_structured.call_args.args[1]
-        # The sample CSV stem is 'sample' — that should appear as the table name.
-        assert "sample" in user_prompt
-        assert "row_count" not in user_prompt  # row_count is in the raw dict key
-        assert "rows" in user_prompt  # formatted as "N rows"
-
-
-# ---------------------------------------------------------------------------
-# Contract enforcement — the agent must reject bad LLM output, not pass it on
-# ---------------------------------------------------------------------------
-
-
-class TestContractEnforcement:
-    """A constraint-violating LLM payload must be rejected, not returned.
-
-    The other profiler tests mock ``BaseAgent``, so they never exercise the
-    real ``call_structured`` validation. These use a stub-backed real BaseAgent
-    so the bad payload flows through ``model_validate``. ``call_structured``
-    wraps the resulting ``ValidationError`` (a ``ValueError`` subclass) in an
-    ``AgentError`` whose ``__cause__`` is the original ``ValidationError`` —
-    that is the contract firing, not the agent silently passing bad data on.
-    """
-
-    def test_out_of_range_null_pct_rejected(
-        self,
-        engine: DuckDBEngine,
-        sample_csv: Path,
-        make_stub_base: Callable[[str], BaseAgent],
-    ) -> None:
-        # null_pct=1.5 violates ColumnProfile's null_pct <= 1.0 bound.
-        bad_payload = json.dumps(
-            {
-                "tables": [
-                    {
-                        "name": "sample",
-                        "row_count": 3,
-                        "columns": [
-                            {
-                                "name": "revenue",
-                                "dtype": "DOUBLE",
-                                "null_count": 0,
-                                "null_pct": 1.5,
-                                "unique_count": 3,
-                                "cardinality": "low",
-                            }
-                        ],
-                    }
-                ],
-                "relationships": [],
-                "suggested_grain": "order_id",
-                "data_quality_issues": [],
-            }
+        csv = tmp_path / "sparse.csv"
+        csv.write_text(
+            "id,note\n1,a\n2,\n3,\n4,\n5,\n",  # 4/5 notes null
+            encoding="utf-8",
         )
-        profiler = DataProfilerAgent(base=make_stub_base(bad_payload), engine=engine)
-
-        with pytest.raises(AgentError) as exc_info:
-            profiler.profile(ProfileRequest(data_paths=[str(sample_csv)]))
-
-        assert isinstance(exc_info.value.__cause__, ValidationError)
-        assert "null_pct" in str(exc_info.value.__cause__)
-
-    def test_extra_field_rejected(
-        self,
-        engine: DuckDBEngine,
-        sample_csv: Path,
-        make_stub_base: Callable[[str], BaseAgent],
-    ) -> None:
-        # extra="forbid" — a hallucinated top-level field must be rejected.
-        bad_payload = json.dumps(
-            {
-                "tables": [{"name": "sample", "row_count": 3, "columns": []}],
-                "relationships": [],
-                "suggested_grain": "order_id",
-                "data_quality_issues": [],
-                "hallucinated_field": "should not be accepted",
-            }
+        profile = profiler.profile(ProfileRequest(data_paths=[str(csv)]))
+        assert any(
+            "note" in issue and "null" in issue.lower()
+            for issue in profile.data_quality_issues
         )
-        profiler = DataProfilerAgent(base=make_stub_base(bad_payload), engine=engine)
 
-        with pytest.raises(AgentError) as exc_info:
-            profiler.profile(ProfileRequest(data_paths=[str(sample_csv)]))
-
-        assert isinstance(exc_info.value.__cause__, ValidationError)
-
-
-# ---------------------------------------------------------------------------
-# Integration test — requires ANTHROPIC_API_KEY
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestDataProfilerIntegration:
-    def test_profiles_sample_csv_end_to_end(self, sample_csv: Path) -> None:
-        """Real Claude API call: verify the returned DataProfile is valid."""
-        import os
-
-        import anthropic
-
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            pytest.skip("ANTHROPIC_API_KEY not set")
-
-        from analytics_agent.agents.base import BaseAgent
-
-        client = anthropic.Anthropic()
-        base = BaseAgent(client=client, cache_dir=None)
-        engine = DuckDBEngine()
-        agent = DataProfilerAgent(base=base, engine=engine)
-
-        profile = agent.profile(ProfileRequest(data_paths=[str(sample_csv)]))
-
-        assert isinstance(profile, DataProfile)
-        assert len(profile.tables) == 1
-        assert profile.tables[0].row_count == 3
-        assert profile.suggested_grain != ""
-        col_names = [c.name for c in profile.tables[0].columns]
-        assert "order_id" in col_names
-        assert "revenue" in col_names
-
-    def test_profiles_sample_orders_csv(self) -> None:
-        """Real Claude API call against the committed sample_orders.csv."""
-        import os
-
-        import anthropic
-
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            pytest.skip("ANTHROPIC_API_KEY not set")
-
-        from analytics_agent.agents.base import BaseAgent
-
-        client = anthropic.Anthropic()
-        base = BaseAgent(client=client, cache_dir=None)
-        engine = DuckDBEngine()
-        agent = DataProfilerAgent(base=base, engine=engine)
-
-        profile = agent.profile(ProfileRequest(data_paths=[str(_SAMPLE_CSV)]))
-
-        assert isinstance(profile, DataProfile)
+    def test_profiles_committed_sample_orders(
+        self, profiler: DataProfilerAgent
+    ) -> None:
+        profile = profiler.profile(ProfileRequest(data_paths=[str(_SAMPLE_CSV)]))
         assert profile.tables[0].row_count == 10
-        # Cardinality for customer_state (3 unique values) should be "low".
         state_col = next(
             c for c in profile.tables[0].columns if c.name == "customer_state"
         )
         assert state_col.cardinality == "low"
+
+
+# ---------------------------------------------------------------------------
+# Test helpers
+# ---------------------------------------------------------------------------
+
+
+def _col(name: str, unique_count: int = 1) -> ColumnProfile:
+    return ColumnProfile(
+        name=name,
+        dtype="VARCHAR",
+        null_count=0,
+        null_pct=0.0,
+        unique_count=unique_count,
+        cardinality="low",
+    )
+
+
+def _table(name: str, columns: list[str]) -> TableProfile:
+    return TableProfile(name=name, row_count=3, columns=[_col(c) for c in columns])

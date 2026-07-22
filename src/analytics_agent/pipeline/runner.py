@@ -64,7 +64,7 @@ class PipelineRunner:
             model=settings.model,
             cache_dir=settings.cache_dir,
         )
-        self._profiler = DataProfilerAgent(base=base, engine=self._engine)
+        self._profiler = DataProfilerAgent(engine=self._engine)
         self._orchestrator = OrchestratorAgent(base=base)
         self._sql_analyst = SQLAnalystAgent(base=base, engine=self._engine)
         self._viz_agent = VizAgent()
