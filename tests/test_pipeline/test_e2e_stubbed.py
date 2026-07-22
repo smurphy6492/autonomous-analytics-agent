@@ -21,33 +21,8 @@ from analytics_agent.config import Settings
 from analytics_agent.models.report import AnalysisReport
 from analytics_agent.pipeline.runner import PipelineRunner
 
-# --- Canned LLM responses, keyed by a phrase unique to each agent's prompt. ---
-
-_PROFILE_JSON = """
-{
-  "tables": [{
-    "name": "orders",
-    "row_count": 10,
-    "columns": [
-      {"name": "order_id", "dtype": "BIGINT", "null_count": 0, "null_pct": 0.0,
-       "unique_count": 10, "cardinality": "low", "sample_values": ["1", "2"],
-       "is_date": false, "is_numeric": true},
-      {"name": "order_date", "dtype": "DATE", "null_count": 0, "null_pct": 0.0,
-       "unique_count": 10, "cardinality": "low", "sample_values": ["2023-01-01"],
-       "is_date": true, "is_numeric": false},
-      {"name": "revenue", "dtype": "DOUBLE", "null_count": 0, "null_pct": 0.0,
-       "unique_count": 10, "cardinality": "low", "sample_values": ["100.0"],
-       "is_date": false, "is_numeric": true},
-      {"name": "category", "dtype": "VARCHAR", "null_count": 0, "null_pct": 0.0,
-       "unique_count": 3, "cardinality": "low", "sample_values": ["electronics"],
-       "is_date": false, "is_numeric": false}
-    ]
-  }],
-  "relationships": [],
-  "suggested_grain": "order_id",
-  "data_quality_issues": []
-}
-"""
+# --- Canned LLM responses, keyed by a phrase unique to each agent's prompt.
+# The Data Profiler is deterministic, so no profiler response is stubbed. ---
 
 _PLAN_JSON = """
 {
@@ -91,9 +66,11 @@ _SYNTHESIS_JSON = """
 
 
 def _route_response(system_prompt: str) -> str:
-    """Return the canned response for whichever agent is calling."""
-    if "data profiler agent" in system_prompt:
-        return _PROFILE_JSON
+    """Return the canned response for whichever agent is calling.
+
+    The Data Profiler is deterministic (no LLM), so it never routes here — the
+    pipeline profiles the real CSV directly.
+    """
     if "decide what SQL analyses" in system_prompt:
         return _PLAN_JSON
     if "SQL analyst agent" in system_prompt:

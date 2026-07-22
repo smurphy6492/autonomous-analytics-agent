@@ -7,7 +7,12 @@ from typing import Any
 
 from analytics_agent.models.chart_spec import ChartSpec
 from analytics_agent.models.report import RenderedChart
-from analytics_agent.viz.renderer import RenderError, render_chart
+from analytics_agent.viz.renderer import (
+    RenderError,
+    build_figure,
+    figure_axis_warnings,
+    figure_to_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +54,18 @@ class VizAgent:
             len(data),
         )
         try:
-            html = render_chart(spec, data)
+            fig = build_figure(spec, data)
+            # Inspect the figure object (robust) before it becomes an opaque
+            # HTML string.
+            warnings = figure_axis_warnings(fig, spec)
+            html = figure_to_html(fig, spec.chart_id)
             logger.info("Chart '%s' rendered successfully.", spec.chart_id)
             return RenderedChart(
                 chart_id=spec.chart_id,
                 title=spec.title,
                 html=html,
                 success=True,
+                warnings=warnings,
             )
         except RenderError as exc:
             logger.warning("Chart '%s' failed to render: %s", spec.chart_id, exc)

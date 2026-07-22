@@ -145,11 +145,8 @@ class TestValidateQueryResult:
 
 
 class TestValidateChartHtml:
-    _CLEAN_HTML = (
-        '<div id="test"></div><script>Plotly.newPlot("test",'
-        '[{"x":[1233131.72,1166176.98,1023434.76],"y":["health_beauty","watches_gifts","bed_bath"],'
-        '"type":"bar","orientation":"h"}],{});</script>'
-    )
+    """Only the bdata serialization backstop lives here now; axis-mapping checks
+    moved to renderer.figure_axis_warnings (tested in test_viz_agent)."""
 
     def test_bdata_present_warns(self) -> None:
         html = (
@@ -166,62 +163,18 @@ class TestValidateChartHtml:
         warnings = validate_chart_html(html, spec)
         assert any("revenue_bar" in w for w in warnings)
 
-    def test_clean_html_no_bdata_warning(self) -> None:
-        spec = _make_spec()
-        warnings = validate_chart_html(self._CLEAN_HTML, spec)
-        assert not any("bdata" in w for w in warnings)
-
-    def test_healthy_x_values_no_sequential_warning(self) -> None:
-        spec = _make_spec()
-        warnings = validate_chart_html(self._CLEAN_HTML, spec)
-        assert not any("sequential" in w for w in warnings)
-
-    def test_sequential_x_axis_warns(self) -> None:
-        # x=[0,1,2,3,4,5,6,7,8,9] — classic row-index symptom.
+    def test_clean_html_no_warning(self) -> None:
         html = (
-            '<script>Plotly.newPlot("c",[{"x":[0,1,2,3,4,5,6,7,8,9],'
-            '"y":["A","B","C","D","E","F","G","H","I","J"],'
+            '<div id="test"></div><script>Plotly.newPlot("test",'
+            '[{"x":[1233131.72,1166176.98],"y":["health_beauty","watches_gifts"],'
             '"type":"bar","orientation":"h"}],{});</script>'
         )
         spec = _make_spec()
-        warnings = validate_chart_html(html, spec)
-        assert any("sequential" in w and "'x'" in w for w in warnings)
-
-    def test_sequential_y_axis_warns(self) -> None:
-        html = (
-            '<script>Plotly.newPlot("c",[{"y":[0,1,2,3,4,5,6,7,8,9],'
-            '"x":["A","B","C","D","E","F","G","H","I","J"],'
-            '"type":"bar"}],{});</script>'
-        )
-        spec = _make_spec(chart_type=ChartType.BAR)
-        warnings = validate_chart_html(html, spec)
-        assert any("sequential" in w and "'y'" in w for w in warnings)
-
-    def test_identical_values_warns(self) -> None:
-        html = (
-            '<script>Plotly.newPlot("c",[{"x":[5,5,5,5,5,5],'
-            '"y":["A","B","C","D","E","F"],"type":"bar"}],{});</script>'
-        )
-        spec = _make_spec()
-        warnings = validate_chart_html(html, spec)
-        assert any("identical" in w for w in warnings)
+        assert validate_chart_html(html, spec) == []
 
     def test_empty_html_no_crash(self) -> None:
         spec = _make_spec()
         assert validate_chart_html("", spec) == []
-
-    def test_real_revenue_values_no_warning(self) -> None:
-        # Representative values from the Olist dataset.
-        html = (
-            '<script>Plotly.newPlot("c",[{"x":[1233131.72,1166176.98,1023434.76,'
-            "954852.55,888724.61,711927.69,615628.69,610204.1,578966.65,471286.48],"
-            '"y":["health_beauty","watches_gifts","bed_bath_table","sports_leisure",'
-            '"computers_accessories","furniture_decor","housewares","cool_stuff",'
-            '"auto","toys"],"type":"bar","orientation":"h"}],{});</script>'
-        )
-        spec = _make_spec()
-        warnings = validate_chart_html(html, spec)
-        assert warnings == []
 
 
 # ------------------------------------------------------------------

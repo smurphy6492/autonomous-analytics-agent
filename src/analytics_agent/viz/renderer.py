@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import logging
 import re
+import statistics
 import struct
 from typing import Any
 
@@ -14,6 +15,12 @@ import plotly.graph_objects as go  # type: ignore[import-untyped]
 from analytics_agent.models.chart_spec import ChartSpec, ChartType
 
 logger = logging.getLogger(__name__)
+
+# A numeric axis whose values correlate this strongly with 0,1,2,… is almost
+# certainly row indices rather than real data (wrong column mapping / undecoded
+# binary data). Checked on the figure's trace arrays, not the rendered HTML.
+_INDEX_CORR_THRESHOLD = 0.99
+_MIN_POINTS_FOR_CORR = 4
 
 # Plotly Python ≥ 6.0 serialises numeric arrays as base64 bdata objects
 # (e.g. {"dtype":"f8","bdata":"..."}). Older Plotly.js builds don't recognise
@@ -87,17 +94,22 @@ class RenderError(Exception):
 def render_chart(spec: ChartSpec, data: list[dict[str, Any]]) -> str:
     """Render a Plotly chart to an HTML div string.
 
-    This function is entirely deterministic — no LLM call is made.  It
-    dispatches on ``spec.chart_type`` and builds the appropriate
-    ``plotly.express`` or ``plotly.graph_objects`` figure.
+    Convenience wrapper: :func:`build_figure` then :func:`figure_to_html`. Kept
+    for callers that only need the HTML and do not care to inspect the figure.
 
-    Args:
-        spec: The chart specification produced by the Orchestrator.
-        data: Rows from the query result (list of dicts).
+    Raises:
+        RenderError: If the data is empty, required columns are missing, or
+            the chart type is unsupported.
+    """
+    return figure_to_html(build_figure(spec, data), spec.chart_id)
 
-    Returns:
-        An HTML string containing the Plotly ``<div>`` (and inline JS) that
-        can be embedded directly in a report.
+
+def build_figure(spec: ChartSpec, data: list[dict[str, Any]]) -> go.Figure:
+    """Build the Plotly figure for *spec* from *data* (no serialization).
+
+    Entirely deterministic — no LLM call. Exposed separately from HTML
+    serialization so the figure object can be inspected (see
+    :func:`figure_axis_warnings`) before it is turned into a string.
 
     Raises:
         RenderError: If the data is empty, required columns are missing, or
@@ -129,13 +141,55 @@ def render_chart(spec: ChartSpec, data: list[dict[str, Any]]) -> str:
             raise RenderError(f"Unsupported chart type: {spec.chart_type!r}")
 
     _apply_layout(fig, spec)
+    return fig
 
+
+def figure_to_html(fig: go.Figure, chart_id: str) -> str:
+    """Serialize a Plotly figure to an embeddable HTML ``<div>`` string."""
     result: str = fig.to_html(
         full_html=False,
         include_plotlyjs=False,  # Plotly JS loaded once in the report template.
-        div_id=spec.chart_id,
+        div_id=chart_id,
     )
     return _decode_bdata(result)
+
+
+def figure_axis_warnings(fig: go.Figure, spec: ChartSpec) -> list[str]:
+    """Inspect a figure's trace arrays for axis-mapping defects.
+
+    Reads the actual numeric x/y arrays on each trace — robust across Plotly
+    versions, unlike scraping the serialized HTML. Flags two signatures:
+
+    - A constant axis (every value identical), which usually means the wrong
+      column was mapped.
+    - An axis that is just sequential row indices (0, 1, 2, …), which signals a
+      wrong column mapping or undecoded binary data.
+
+    Categorical and date axes are skipped (only numeric axes are checked).
+    Never raises; returns human-readable warning strings.
+    """
+    warnings: list[str] = []
+    for trace in fig.data:
+        label = getattr(trace, "name", None) or spec.chart_id
+        for axis in ("x", "y"):
+            values = _numeric_axis_values(getattr(trace, axis, None))
+            if len(values) < 2:
+                continue
+            if len(set(values)) == 1:
+                warnings.append(
+                    f"[{spec.chart_id}] {label} {axis}-axis is constant "
+                    f"({values[0]}) — possible wrong column mapping"
+                )
+                continue
+            if (
+                len(values) >= _MIN_POINTS_FOR_CORR
+                and _index_correlation(values) >= _INDEX_CORR_THRESHOLD
+            ):
+                warnings.append(
+                    f"[{spec.chart_id}] {label} {axis}-axis looks like sequential "
+                    "row indices — possible wrong column mapping or undecoded data"
+                )
+    return warnings
 
 
 # ------------------------------------------------------------------
@@ -311,6 +365,38 @@ def _validate_columns(spec: ChartSpec, sample_row: dict[str, Any]) -> None:
             f"Chart '{spec.chart_id}': missing column(s) {missing}. "
             f"Available columns: {sorted(available)}"
         )
+
+
+def _numeric_axis_values(raw: object) -> list[float]:
+    """Return *raw* as a list of floats, or [] if it isn't a numeric axis.
+
+    A single non-numeric value (a category label, a date) means the whole axis
+    is not numeric, so an empty list is returned and the axis is skipped.
+    """
+    if raw is None:
+        return []
+    try:
+        items = list(raw)  # type: ignore[call-overload]
+    except TypeError:
+        return []
+
+    values: list[float] = []
+    for v in items:
+        if isinstance(v, bool):
+            return []
+        try:
+            values.append(float(v))
+        except (TypeError, ValueError):
+            return []
+    return values
+
+
+def _index_correlation(values: list[float]) -> float:
+    """Pearson correlation of *values* with 0,1,2,…; 0.0 on any stats error."""
+    try:
+        return statistics.correlation(values, list(range(len(values))))
+    except statistics.StatisticsError:
+        return 0.0
 
 
 def _resolve_color_sequence(palette: str) -> list[str] | None:

@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Single source of truth for the default model id. Referenced by BaseAgent and
+# by the Settings default below so the two never drift.
+DEFAULT_MODEL = "claude-sonnet-4-6"
+
 
 class Settings:
     """Application settings loaded from environment."""
@@ -27,7 +31,7 @@ class Settings:
         self.anthropic_api_key = api_key
         self.data_dir = Path(os.getenv("DATA_DIR", "data/raw/olist"))
         self.output_dir = Path(os.getenv("OUTPUT_DIR", "output"))
-        self.model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+        self.model = os.getenv("ANTHROPIC_MODEL", DEFAULT_MODEL)
         self.cache_dir = Path(os.getenv("CACHE_DIR", ".cache"))
 
 

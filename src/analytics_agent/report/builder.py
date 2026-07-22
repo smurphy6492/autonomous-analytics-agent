@@ -84,6 +84,7 @@ class ReportBuilder:
             "charts": charts,
             "data_tables": rendered_tables,
             "data_sources": report.data_sources,
+            "data_date_range": report.data_date_range,
             "analysis_approach": report.analysis_approach,
             "queries": queries_for_template,
             "execution_time": _format_duration(report.execution_time_ms),

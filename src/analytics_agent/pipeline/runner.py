@@ -20,7 +20,7 @@ from analytics_agent.agents.sql_analyst import SQLAnalystAgent
 from analytics_agent.agents.viz_agent import VizAgent
 from analytics_agent.config import Settings
 from analytics_agent.db.engine import DuckDBEngine
-from analytics_agent.models.profile import ProfileRequest
+from analytics_agent.models.profile import DataProfile, ProfileRequest
 from analytics_agent.models.query_plan import QueryPlanRequest, SQLRequest
 from analytics_agent.models.report import (
     AnalysisReport,
@@ -64,7 +64,7 @@ class PipelineRunner:
             model=settings.model,
             cache_dir=settings.cache_dir,
         )
-        self._profiler = DataProfilerAgent(base=base, engine=self._engine)
+        self._profiler = DataProfilerAgent(engine=self._engine)
         self._orchestrator = OrchestratorAgent(base=base)
         self._sql_analyst = SQLAnalystAgent(base=base, engine=self._engine)
         self._viz_agent = VizAgent()
@@ -364,6 +364,11 @@ class PipelineRunner:
                 continue
             rendered = self._viz_agent.render(spec, source_result.data or [])
             if rendered.success:
+                # Figure-level warnings (axis mapping) were computed from the
+                # figure object during render; the HTML check is the bdata
+                # serialization backstop.
+                for warning in rendered.warnings:
+                    logger.warning("[QA] %s", warning)
                 for warning in validate_chart_html(rendered.html, spec):
                     logger.warning("[QA] %s", warning)
             ctx.rendered_charts.append(rendered)
@@ -395,6 +400,7 @@ class PipelineRunner:
             query_plan=ctx.query_plan,
             query_results=ctx.query_results,
             data_sources=ctx.table_names,
+            data_date_range=_derive_data_window(ctx.profile),
             analysis_approach=ctx.query_plan.analysis_approach,
             execution_time_ms=ctx.elapsed_ms(),
             agent_calls=ctx.agent_calls,
@@ -405,6 +411,22 @@ class PipelineRunner:
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+
+def _derive_data_window(profile: DataProfile | None) -> str | None:
+    """Return the span of the data's primary date column, e.g. "2016-09 to 2018-10".
+
+    Time-relative questions ("past 12 months") are answered against the latest
+    date *in the data*, not today. Surfacing the real window keeps a report from
+    implying it covers a period the data never reached.
+    """
+    if profile is None:
+        return None
+    for table in profile.tables:
+        for col in table.columns:
+            if col.is_date and col.min_value and col.max_value:
+                return f"{col.min_value} to {col.max_value}"
+    return None
 
 
 def _slugify(text: str) -> str:

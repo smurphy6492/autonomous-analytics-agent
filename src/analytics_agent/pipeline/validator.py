@@ -51,11 +51,6 @@ _FIGURE_MATCH_RTOL = 0.02
 # Detect any surviving bdata key in rendered HTML.
 _BDATA_KEY_RE = re.compile(r'"bdata"\s*:')
 
-# Match "x":[...] or "y":[...] where the array contains only numbers
-# (no quotes inside) — i.e., decoded numeric axes. Date/string axes are
-# excluded because they contain quoted values.
-_NUMERIC_AXIS_RE = re.compile(r'"([xy])"\s*:\s*(\[[\d,.\-eE+\s]+\])')
-
 
 def validate_query_result(result: QueryResult) -> list[str]:
     """Inspect a successful QueryResult for data-quality problems.
@@ -110,55 +105,31 @@ def validate_query_result(result: QueryResult) -> list[str]:
 
 
 def validate_chart_html(html: str, spec: ChartSpec) -> list[str]:
-    """Inspect rendered chart HTML for known rendering defects.
+    """Inspect rendered chart HTML for the one defect only the HTML can show.
 
-    Returns a list of human-readable warning strings.  Empty list = no issues.
-    Does not raise.  This is a regression guard — particularly for the Plotly
-    bdata encoding bug (Bug B) and sequential-index axis bug (Bug C).
+    Axis-mapping defects (sequential indices, constant axes) are now checked on
+    the figure object before serialization — see
+    :func:`analytics_agent.viz.renderer.figure_axis_warnings`, which reads the
+    real trace arrays instead of regex-scraping the serialized string. This
+    function keeps only the ``bdata`` residual check, which is inherently about
+    the serialized output: Plotly ≥ 6.0 encodes numeric arrays as base64
+    ``bdata`` objects that older Plotly.js can't read, and the renderer decodes
+    them — this is the regression guard proving it did.
 
-    Checks performed:
-    - Residual ``bdata`` key in HTML (should have been decoded by renderer).
-    - Numeric axis arrays that look like sequential row indices.
-    - Numeric axis arrays where all values are identical.
+    Returns a list of human-readable warning strings. Empty list = no issues.
+    Does not raise.
     """
     if not html:
         return []
 
-    warnings: list[str] = []
-
-    # Check: bdata not fully decoded (Bug B regression guard).
     if _BDATA_KEY_RE.search(html):
-        warnings.append(
+        return [
             f"[{spec.chart_id}] HTML still contains 'bdata' — "
             "Plotly bdata was not decoded; axes may render as row indices. "
             "Check analytics_agent.viz.renderer._decode_bdata()."
-        )
+        ]
 
-    # Check numeric axis arrays for sequential indices and zero variance.
-    for match in _NUMERIC_AXIS_RE.finditer(html):
-        axis = match.group(1)
-        raw = match.group(2)
-        values = _parse_float_array(raw)
-        if not values or len(values) < 2:
-            continue
-
-        if len(set(values)) == 1:
-            warnings.append(
-                f"[{spec.chart_id}] Axis '{axis}' contains {len(values)} "
-                f"identical values ({values[0]}) — possible wrong column mapping"
-            )
-            continue
-
-        if len(values) >= _MIN_ROWS_FOR_CORR:
-            corr = _index_correlation(values)
-            if corr >= _INDEX_CORR_THRESHOLD:
-                warnings.append(
-                    f"[{spec.chart_id}] Axis '{axis}' looks like sequential row "
-                    f"indices (first 5: {values[:5]}, corr={corr:.3f}) — "
-                    "possible undecoded bdata or wrong column mapping"
-                )
-
-    return warnings
+    return []
 
 
 def validate_join_fanout(
@@ -377,17 +348,3 @@ def _index_correlation(values: list[float]) -> float:
         return statistics.correlation(values, expected)
     except statistics.StatisticsError:
         return 0.0
-
-
-def _parse_float_array(raw: str) -> list[float]:
-    """Parse a JSON numeric array string into a Python list of floats.
-
-    Handles scientific notation and negative numbers.  Returns empty list on
-    any parse failure.
-    """
-    try:
-        return [
-            float(v) for v in re.findall(r"-?[\d]+(?:\.\d+)?(?:[eE][+\-]?\d+)?", raw)
-        ]
-    except ValueError:
-        return []

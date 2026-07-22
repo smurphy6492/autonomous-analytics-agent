@@ -63,6 +63,7 @@ class RenderedChart(BaseModel):
     html: str  # Plotly figure rendered as an HTML <div>
     success: bool
     error: str | None = None
+    warnings: list[str] = Field(default_factory=list)  # figure-level QA warnings
 
     model_config = {"extra": "forbid"}
 
@@ -99,6 +100,7 @@ class AnalysisReport(BaseModel):
     query_plan: QueryPlan
     query_results: dict[str, QueryResult]
     data_sources: list[str]  # Table/file names used
+    data_date_range: str | None = None  # Span of the data's primary date column
     analysis_approach: str
     execution_time_ms: int = 0
     agent_calls: list[AgentCallLog] = Field(default_factory=list)
