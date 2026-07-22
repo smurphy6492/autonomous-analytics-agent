@@ -364,6 +364,11 @@ class PipelineRunner:
                 continue
             rendered = self._viz_agent.render(spec, source_result.data or [])
             if rendered.success:
+                # Figure-level warnings (axis mapping) were computed from the
+                # figure object during render; the HTML check is the bdata
+                # serialization backstop.
+                for warning in rendered.warnings:
+                    logger.warning("[QA] %s", warning)
                 for warning in validate_chart_html(rendered.html, spec):
                     logger.warning("[QA] %s", warning)
             ctx.rendered_charts.append(rendered)

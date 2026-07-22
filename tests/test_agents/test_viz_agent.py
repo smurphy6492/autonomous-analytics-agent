@@ -10,7 +10,13 @@ from pydantic import ValidationError
 from analytics_agent.agents.viz_agent import VizAgent
 from analytics_agent.models.chart_spec import ChartSpec, ChartType
 from analytics_agent.models.report import RenderedChart
-from analytics_agent.viz.renderer import RenderError, render_chart
+from analytics_agent.viz.renderer import (
+    RenderError,
+    build_figure,
+    figure_axis_warnings,
+    figure_to_html,
+    render_chart,
+)
 
 # ---------------------------------------------------------------------------
 # Shared test data
@@ -494,3 +500,77 @@ class TestMalformedSpecEnforcement:
         result = VizAgent().render(spec, _time_series_data())
         assert result.success is False
         assert "nonexistent_column" in (result.error or "")
+
+
+# ---------------------------------------------------------------------------
+# figure_axis_warnings — validates the figure object, not the HTML string
+# ---------------------------------------------------------------------------
+
+
+def _bar_spec() -> ChartSpec:
+    return ChartSpec(
+        chart_id="rev_bar",
+        chart_type=ChartType.BAR,
+        title="Revenue by Category",
+        data_source="q",
+        x_column="category",
+        y_column="revenue",
+    )
+
+
+class TestFigureAxisWarnings:
+    def test_healthy_numeric_axis_no_warning(self) -> None:
+        fig = build_figure(_bar_spec(), _category_data())
+        assert figure_axis_warnings(fig, _bar_spec()) == []
+
+    def test_sequential_index_axis_warns(self) -> None:
+        # revenue == row index (0,1,2,…) — the classic wrong-mapping symptom.
+        data = [{"category": chr(65 + i), "revenue": float(i)} for i in range(10)]
+        fig = build_figure(_bar_spec(), data)
+        warnings = figure_axis_warnings(fig, _bar_spec())
+        assert any("sequential" in w for w in warnings)
+
+    def test_constant_axis_warns(self) -> None:
+        data = [{"category": chr(65 + i), "revenue": 5.0} for i in range(6)]
+        fig = build_figure(_bar_spec(), data)
+        warnings = figure_axis_warnings(fig, _bar_spec())
+        assert any("constant" in w for w in warnings)
+
+    def test_categorical_and_date_axes_skipped(self) -> None:
+        # A line chart with a date-like x and healthy numeric y: no false alarm.
+        spec = ChartSpec(
+            chart_id="ts",
+            chart_type=ChartType.LINE,
+            title="Revenue Over Time",
+            data_source="q",
+            x_column="month",
+            y_column="total",
+        )
+        fig = build_figure(spec, _time_series_data())
+        assert figure_axis_warnings(fig, spec) == []
+
+
+class TestVizAgentAttachesWarnings:
+    def test_warnings_empty_on_healthy_chart(self) -> None:
+        result = VizAgent().render(_bar_spec(), _category_data())
+        assert result.success is True
+        assert result.warnings == []
+
+    def test_warnings_populated_on_index_axis(self) -> None:
+        data = [{"category": chr(65 + i), "revenue": float(i)} for i in range(10)]
+        result = VizAgent().render(_bar_spec(), data)
+        assert result.success is True
+        assert any("sequential" in w for w in result.warnings)
+
+
+class TestBuildFigureAndSerialize:
+    def test_build_then_serialize_matches_render_chart(self) -> None:
+        spec = _bar_spec()
+        fig = build_figure(spec, _category_data())
+        html = figure_to_html(fig, spec.chart_id)
+        assert "<div" in html
+        assert spec.chart_id in html
+
+    def test_build_figure_empty_data_raises(self) -> None:
+        with pytest.raises(RenderError, match="empty"):
+            build_figure(_bar_spec(), [])

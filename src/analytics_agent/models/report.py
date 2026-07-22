@@ -63,6 +63,7 @@ class RenderedChart(BaseModel):
     html: str  # Plotly figure rendered as an HTML <div>
     success: bool
     error: str | None = None
+    warnings: list[str] = Field(default_factory=list)  # figure-level QA warnings
 
     model_config = {"extra": "forbid"}
 
