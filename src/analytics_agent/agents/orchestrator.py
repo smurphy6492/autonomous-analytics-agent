@@ -6,12 +6,7 @@ import json
 import logging
 
 from analytics_agent.agents.base import BaseAgent
-from analytics_agent.models.query_plan import (
-    PlannedQuery,
-    QueryPlan,
-    QueryPlanRequest,
-    QueryResult,
-)
+from analytics_agent.models.query_plan import QueryPlan, QueryPlanRequest
 from analytics_agent.models.report import AnalysisSynthesis, SynthesisRequest
 
 logger = logging.getLogger(__name__)
@@ -485,17 +480,3 @@ def _build_coverage_prompt(
         "table coverage? Respond with PASS or GAPS."
     )
     return "\n".join(lines)
-
-
-def _format_planned_queries(queries: list[PlannedQuery]) -> str:
-    """Format a list of planned queries for logging or display."""
-    return ", ".join(q.query_id for q in queries)
-
-
-def _format_result_summary(results: dict[str, QueryResult]) -> str:
-    """Format query result summary for logging."""
-    parts = []
-    for qid, r in results.items():
-        status = f"OK({r.row_count})" if r.success else f"FAIL({r.error})"
-        parts.append(f"{qid}={status}")
-    return ", ".join(parts)

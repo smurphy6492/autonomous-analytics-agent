@@ -12,9 +12,11 @@ from typing import Any, TypeVar
 import anthropic
 from pydantic import BaseModel
 
+from analytics_agent.config import DEFAULT_MODEL
+
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "claude-sonnet-4-6"
+_DEFAULT_MODEL = DEFAULT_MODEL
 _DEFAULT_MAX_TOKENS = 16384
 _RETRY_BASE_DELAY = 1.0  # seconds; doubled on each attempt
 
@@ -258,13 +260,20 @@ def _extract_json(text: str) -> Any:
         except json.JSONDecodeError:
             pass
 
-    # Last resort: find the first '{' and last '}' and parse the slice.
-    start = stripped.find("{")
-    end = stripped.rfind("}")
-    if start != -1 and end != -1 and end > start:
+    # Last resort: slice out the outermost object or array. Try whichever
+    # bracket type opens first, so a top-level array of objects is not
+    # mis-sliced from its first inner '{' to its last '}'.
+    candidates: list[tuple[int, str]] = []
+    for open_ch, close_ch in (("{", "}"), ("[", "]")):
+        start = stripped.find(open_ch)
+        end = stripped.rfind(close_ch)
+        if start != -1 and end != -1 and end > start:
+            candidates.append((start, stripped[start : end + 1]))
+
+    for _, span in sorted(candidates, key=lambda c: c[0]):
         try:
-            return json.loads(stripped[start : end + 1])
+            return json.loads(span)
         except json.JSONDecodeError:
-            pass
+            continue
 
     raise json.JSONDecodeError("No valid JSON found in response", text, 0)

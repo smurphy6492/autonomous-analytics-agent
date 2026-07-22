@@ -92,6 +92,22 @@ class TestExtractJson:
         data = _extract_json(text)
         assert data == {"key": "value"}
 
+    def test_plain_json_array(self) -> None:
+        data = _extract_json('[{"a": 1}, {"a": 2}]')
+        assert data == [{"a": 1}, {"a": 2}]
+
+    def test_json_array_embedded_in_prose(self) -> None:
+        # The last-resort slice must not grab from the first inner '{' to the
+        # last '}' — it must recover the whole array.
+        text = 'Here you go: [{"a": 1}, {"a": 2}] — done.'
+        data = _extract_json(text)
+        assert data == [{"a": 1}, {"a": 2}]
+
+    def test_array_in_markdown_fence(self) -> None:
+        text = "```json\n[1, 2, 3]\n```"
+        data = _extract_json(text)
+        assert data == [1, 2, 3]
+
     def test_invalid_json_raises(self) -> None:
         with pytest.raises(json.JSONDecodeError):
             _extract_json("not valid json at all")
