@@ -99,6 +99,7 @@ class AnalysisReport(BaseModel):
     query_plan: QueryPlan
     query_results: dict[str, QueryResult]
     data_sources: list[str]  # Table/file names used
+    data_date_range: str | None = None  # Span of the data's primary date column
     analysis_approach: str
     execution_time_ms: int = 0
     agent_calls: list[AgentCallLog] = Field(default_factory=list)

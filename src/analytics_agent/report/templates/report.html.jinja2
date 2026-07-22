@@ -365,6 +365,9 @@
             {% if data_sources %}
             <p><strong>Data Sources:</strong> {{ data_sources | join(", ") }}</p>
             {% endif %}
+            {% if data_date_range %}
+            <p><strong>Data Window:</strong> {{ data_date_range }} — time-relative analysis (e.g. "past 12 months") is measured from the latest date in the data, not today.</p>
+            {% endif %}
             <p><strong>Analysis Approach:</strong> {{ analysis_approach }}</p>
 
             {% if queries %}

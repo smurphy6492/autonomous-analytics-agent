@@ -18,6 +18,81 @@ def test_slugify_basic() -> None:
     assert _slugify("Revenue by Category") == "revenue_by_category"
 
 
+# ---------------------------------------------------------------------------
+# _derive_data_window
+# ---------------------------------------------------------------------------
+
+
+def test_derive_data_window_none_profile() -> None:
+    from analytics_agent.pipeline.runner import _derive_data_window
+
+    assert _derive_data_window(None) is None
+
+
+def test_derive_data_window_from_date_column() -> None:
+    from analytics_agent.models.profile import (
+        ColumnProfile,
+        DataProfile,
+        TableProfile,
+    )
+    from analytics_agent.pipeline.runner import _derive_data_window
+
+    profile = DataProfile(
+        tables=[
+            TableProfile(
+                name="orders",
+                row_count=2,
+                columns=[
+                    ColumnProfile(
+                        name="order_date",
+                        dtype="DATE",
+                        null_count=0,
+                        null_pct=0.0,
+                        unique_count=2,
+                        cardinality="low",
+                        is_date=True,
+                        min_value="2016-09-04",
+                        max_value="2018-10-17",
+                    ),
+                ],
+            )
+        ],
+        suggested_grain="order_date",
+    )
+    assert _derive_data_window(profile) == "2016-09-04 to 2018-10-17"
+
+
+def test_derive_data_window_no_date_column() -> None:
+    from analytics_agent.models.profile import (
+        ColumnProfile,
+        DataProfile,
+        TableProfile,
+    )
+    from analytics_agent.pipeline.runner import _derive_data_window
+
+    profile = DataProfile(
+        tables=[
+            TableProfile(
+                name="t",
+                row_count=1,
+                columns=[
+                    ColumnProfile(
+                        name="revenue",
+                        dtype="DOUBLE",
+                        null_count=0,
+                        null_pct=0.0,
+                        unique_count=1,
+                        cardinality="low",
+                        is_numeric=True,
+                    ),
+                ],
+            )
+        ],
+        suggested_grain="revenue",
+    )
+    assert _derive_data_window(profile) is None
+
+
 def test_slugify_removes_special_chars() -> None:
     result = _slugify("Hello, World! (2024)")
     assert "," not in result
