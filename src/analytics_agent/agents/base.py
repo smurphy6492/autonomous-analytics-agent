@@ -188,10 +188,12 @@ class BaseAgent:
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
-        block = response.content[0]
-        if block.type != "text":
-            raise AgentError(f"Unexpected response block type: {block.type}")
-        return block.text
+        for block in response.content:
+            if block.type == "text":
+                return block.text
+        raise AgentError(
+            f"No text block in response (stop_reason={response.stop_reason})"
+        )
 
     # ------------------------------------------------------------------
     # Cache helpers
