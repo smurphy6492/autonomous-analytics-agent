@@ -76,8 +76,8 @@ Your output is a QueryPlan with 2-4 planned queries. Each planned query must:
 - Classify the expected_output_type as one of: time_series, summary_table,
   breakdown, other.
 
-Think step-by-step: what are the key dimensions and metrics needed to answer the
-question? Then define the minimal set of queries that covers them.
+Define the minimal set of queries that covers the key dimensions and metrics the
+question needs.
 
 Respond with a QueryPlan JSON object only — no explanation, no markdown fences.\
 """
